@@ -1,0 +1,43 @@
+{
+		"name": "vscode-plonefs",
+		"displayName": "PloneFS - a file system provider sample",
+		"description": "Showcase for the file system provider API, also useful for testing again document that are not on disk.",
+		"version": "0.0.0",
+		"publisher": "Derek Davenport",
+		"repository": {
+				"url": "https://github.com/derekdavenport/plonefs.git",
+				"type": "git"
+		},
+		"engines": {
+				"vscode": "^1.28.0"
+		},
+		"categories": [
+				"Other"
+		],
+		"activationEvents": [
+				"onCommand:plonefs.openURI"
+		],
+		"main": "./out/src/extension",
+		"contributes": {
+				"commands": [
+						{
+								"command": "plonefs.openURI",
+								"title": "Open Plone Site",
+								"category": "PloneFS"
+						}
+				]
+		},
+		"scripts": {
+				"vscode:prepublish": "npm run compile",
+				"compile": "tsc -p ./",
+				"watch": "tsc -watch -p ./",
+				"postinstall": "node ./node_modules/vscode/bin/install"
+		},
+		"devDependencies": {
+				"@types/node": "^8.10.37",
+				"form-data": "^2.3.3",
+				"node-fetch": "^2.2.0",
+				"typescript": "^3.1.5",
+				"vscode": "^1.1.21"
+		}
+}
