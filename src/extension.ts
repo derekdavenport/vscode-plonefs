@@ -45,6 +45,9 @@ export function activate(context: vscode.ExtensionContext) {
 				credentialStore[uri.authority + uri.path] = { username, password };
 				context.workspaceState.update('credentialStore', credentialStore);
 
+				// so far it doesn't matter if I register a plone provider updating the workspace
+				// the only thing that has worked so far is making a plone scheme activation event
+				// and attaching the provider after the extension is activated again
 				const updated = vscode.workspace.updateWorkspaceFolders(
 					0, 0, {
 						name: uri.path,
