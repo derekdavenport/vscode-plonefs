@@ -1,17 +1,21 @@
 'use strict';
 import * as vscode from 'vscode';
-import { PloneFS, Document, Credentials, CredentialStore } from './ploneFS';
+import PloneFS, { CredentialStore } from './PloneFS';
+import { Document, File } from './library/plone';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('PloneFS says "Hello"', context.storagePath);
 	let credentialStore = context.workspaceState.get<CredentialStore>('credentialStore', {});
 	const ploneFS = new PloneFS(credentialStore);
 	context.subscriptions.push(vscode.workspace.registerFileSystemProvider('plone', ploneFS, { isCaseSensitive: false }));
-	context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(doc => {
+	context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(async doc => {
 		if (doc.languageId === 'plaintext') {
-			const stat = ploneFS.stat(doc.uri);
+			const stat: vscode.FileStat = await ploneFS.stat(doc.uri);
 			if (stat instanceof Document) {
 				vscode.languages.setTextDocumentLanguage(doc, 'html');
+			}
+			else if (stat instanceof File && stat.language && stat.language !== 'plaintext') {
+				vscode.languages.setTextDocumentLanguage(doc, stat.language);
 			}
 		}
 	}));
