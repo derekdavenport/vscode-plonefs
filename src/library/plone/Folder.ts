@@ -11,7 +11,7 @@ type Listing = {
 	path: Item[];
 	upload_allowed: boolean;
 	items: Item[];
-}
+};
 
 type Item = {
 	description: string;
@@ -24,7 +24,7 @@ type Item = {
 	portal_type: 'Folder' | 'Document';
 	id: string;
 	normalized_type: 'folder' | 'document' | 'file';
-}
+};
 
 export default class Folder extends PloneObject {
 

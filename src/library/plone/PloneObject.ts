@@ -97,7 +97,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 			const request = https.request(options, response => {
 				if (response.statusCode === 302) {
 					// in case of rename
-					this.uri = this.uri.with({ path: this.path.dir + '/' + this.name })
+					this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
 					resolve(this.exists = true);
 				}
 				else {

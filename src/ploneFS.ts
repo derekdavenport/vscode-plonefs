@@ -233,7 +233,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			await folder.load(await this.cookie);
 		}
 		entry = folder.entries.get(relativePath.base);
-		if (!entry) throw vscode.FileSystemError.FileNotFound(uri);
+		if (!entry) {
+			throw vscode.FileSystemError.FileNotFound(uri);
+		}
 		return entry;
 	}
 
@@ -249,7 +251,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				continue;
 			}
 			let child: Entry | undefined;
-			if (!entry && this.rootFolder && part == this.rootFolder.name) {
+			if (!entry && this.rootFolder && part === this.rootFolder.name) {
 				child = this.rootFolder;
 			}
 			else if (entry instanceof Folder) {
