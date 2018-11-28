@@ -104,7 +104,7 @@ export default class Document extends PloneObject {
 			const options = {
 				method: 'POST',
 				host: this.uri.authority,
-				path: this.uri.path + '/tinymce-save',
+				path: Document.escapePath(this.uri.path) + '/tinymce-save',
 				headers: {
 					"Cookie": cookie,
 					"Content-Type": "application/x-www-form-urlencoded; charset=utf-8",

@@ -50,7 +50,7 @@ export default class Folder extends PloneObject {
 			const options = {
 				method: 'POST',
 				host: this.uri.authority,
-				path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',
+				path: Folder.escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
 				headers: {
 					"Cookie": cookie,
 					"Content-Type": "application/x-www-form-urlencoded;  charset=UTF-8",

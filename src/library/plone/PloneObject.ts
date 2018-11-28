@@ -47,7 +47,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		return new Promise<string>((resolve, reject) => {
 			const options = {
 				host: this.uri.authority,
-				path: this.path.dir + '/createObject?type_name=' + this.constructor.name,
+				path: PloneObject.escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
 				headers: {
 					"Cookie": cookie,
 				},
@@ -87,7 +87,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 			const options = {
 				method: 'post',
 				host: this.uri.authority,
-				path: savePath + '/atct_edit',
+				path: PloneObject.escapePath(savePath) + '/atct_edit',
 				headers: {
 					"Cookie": cookie,
 					"Content-Type": "application/x-www-form-urlencoded; charset=utf-8",

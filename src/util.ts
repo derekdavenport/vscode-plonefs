@@ -8,17 +8,17 @@ type FileType = {
 	filename: string,
 	data: Uint8Array,
 	contentType?: string
-}
+};
 
-type ValueType = string | { toString(): string }
+type ValueType = string | { toString(): string };
 
 type FormData = {
 	[name: string]: ValueType;
-}
+};
 
 export type MultipartData = {
 	[name: string]: ValueType | FileType;
-}
+};
 
 function isFileType(value: ValueType | FileType): value is FileType {
 	return typeof (value as FileType).filename === 'string' && typeof (value as FileType).data === 'object';
@@ -32,7 +32,7 @@ function isFormData(data: MultipartData): data is FormData {
 	return Object.values(data).every(value => isValueType(value));
 }
 
-export async function post(options: https.RequestOptions, formData: FormData): Promise<http.IncomingMessage>
+export async function post(options: https.RequestOptions, formData: FormData): Promise<http.IncomingMessage>;
 export async function post(options: https.RequestOptions, formData: MultipartData): Promise<http.IncomingMessage> {
 	if (isFormData(formData)) {
 		return postFormData(options, formData);
@@ -77,7 +77,7 @@ async function postMultipartData(options: https.RequestOptions, multipartData: M
 				'Content-Type': 'multipart/form-data; charset=utf-8; boundary=' + boundary,
 				// TODO: add "Content-Length": ??? plone doesn't require it, but other sites might if reuse this code
 			}
-		}
+		};
 		const request = https.request(options, response => {
 			resolve(response);
 		});

@@ -80,7 +80,7 @@ export default class File extends PloneObject {
 		};
 		const options = {
 			host: this.uri.authority,
-			path: savePath + '/atct_edit',
+			path: File.escapePath(savePath) + '/atct_edit',
 			headers: {
 				"Cookie": cookie,
 			},
@@ -97,7 +97,7 @@ export default class File extends PloneObject {
 	async create(cookie: string) {
 		const options = {
 			host: this.uri.authority,
-			path: this.path.dir + '/tinymce-upload',
+			path: File.escapePath(this.path.dir) + '/tinymce-upload',
 			headers: {
 				"Cookie": cookie,
 			},

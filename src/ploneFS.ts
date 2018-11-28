@@ -191,6 +191,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			const options = {
 				method: 'POST',
 				host: this.rootFolder.uri.authority,
+				// TODO: move all requests to util and escape all paths
 				path: this.rootFolder.uri.path + '/login_form',
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
@@ -302,7 +303,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
-	watch(resource: vscode.Uri, opts): vscode.Disposable {
+	watch(/*resource: vscode.Uri, opts*/): vscode.Disposable {
 		// ignore, fires for all changes...
 		return new vscode.Disposable(() => { });
 	}
