@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as https from 'https';
-import * as querystring from 'querystring';
+import { post } from '../util';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	type: vscode.FileType;
@@ -78,37 +78,27 @@ export default abstract class PloneObject implements vscode.FileStat {
 	async save(cookie: string) {
 		// if doesn't exist, create
 		const savePath = this.exists ? this.uri.path : await this.getNewSavePath(cookie);
-		return new Promise<boolean>((resolve, reject) => {
-			const postData = Buffer.from(querystring.stringify({
-				id: this.name,
-				title: this.name,
-				'form.submitted': 1,
-			}));
-			const options = {
-				method: 'post',
-				host: this.uri.authority,
-				path: PloneObject.escapePath(savePath) + '/atct_edit',
-				headers: {
-					"Cookie": cookie,
-					"Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-					"Content-Length": postData.length,
-				},
-			};
-			const request = https.request(options, response => {
-				if (response.statusCode === 302) {
-					// in case of rename
-					this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
-					resolve(this.exists = true);
-				}
-				else {
-					return reject(`${response.statusCode}: ${response.statusMessage}`);
-				}
-			});
-			request.on('error', error => {
-				throw error;
-			});
-			request.end(postData);
-		});
+		const options = {
+			host: this.uri.authority,
+			path: PloneObject.escapePath(savePath) + '/atct_edit',
+			headers: {
+				"Cookie": cookie,
+			},
+		};
+		const postData = {
+			id: this.name,
+			title: this.name,
+			'form.submitted': 1,
+		};
+		const response = await post(options, postData);
+		if (response.statusCode === 302) {
+			// in case of rename
+			this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
+			return this.exists = true;
+		}
+		else {
+			throw new Error(`${response.statusCode}: ${response.statusMessage}`);
+		}
 	}
 
 	protected static escapePath(path: string): string {

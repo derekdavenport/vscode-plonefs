@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as http from 'http';
-import * as https from 'https';
-import * as querystring from 'querystring';
+import { post } from '../util';
 import PloneObject from './PloneObject';
 
 export default class Document extends PloneObject {
@@ -96,34 +95,31 @@ export default class Document extends PloneObject {
 		if (!this.exists) {
 			return super.save(cookie);
 		}
-		return new Promise<boolean>((resolve, reject) => {
-			const postData = querystring.stringify({
+		return new Promise<boolean>(async (resolve, reject) => {
+			const postData = {
 				fieldname: 'text',
 				text: this.data.toString(),
-			});
+			};
 			const options = {
-				method: 'POST',
 				host: this.uri.authority,
 				path: Document.escapePath(this.uri.path) + '/tinymce-save',
 				headers: {
 					"Cookie": cookie,
-					"Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-					"Content-Length": Buffer.byteLength(postData)
 				},
 			};
 
-			const request = https.request(options, response => {
+			try {
+				const response = await post(options, postData);
 				let buffers: Buffer[] = [];
 				response.on('data', (chunk: Buffer) => buffers.push(chunk));
 				response.on('end', () => {
 					const text = Buffer.concat(buffers).toString();
 					resolve(this.exists = text === 'saved');
 				});
-			});
-			request.on('error', error => {
+			}
+			catch (error) {
 				reject(error);
-			});
-			request.end(postData);
+			}
 		});
 	}
 

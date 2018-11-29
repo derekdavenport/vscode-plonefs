@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import * as https from 'https';
-import * as querystring from 'querystring';
 import PloneObject from './PloneObject';
 import Document from './Document';
 import File from './File';
 import { Entry } from '.';
+import { post } from '../util';
 
 type Listing = {
 	parent_url: string;
@@ -41,28 +40,24 @@ export default class Folder extends PloneObject {
 			return this.loadingPromise;
 		}
 		this.loading = true;
-		return this.loadingPromise = new Promise<boolean>((resolve, reject) => {
+		return this.loadingPromise = new Promise<boolean>(async (resolve) => {
 			this.loaded = false;
-			const postData = querystring.stringify({
-				rooted: 'True',
-				document_base_url: '/',
-			});
 			const options = {
-				method: 'POST',
+				// method: 'POST',
 				host: this.uri.authority,
 				path: Folder.escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
 				headers: {
 					"Cookie": cookie,
-					"Content-Type": "application/x-www-form-urlencoded;  charset=UTF-8",
-					"Content-Length": Buffer.byteLength(postData)
 				},
 			};
+			const response = await post(options, {
+				rooted: 'True',
+				document_base_url: '/',
+			});
 
-			const request = https.request(options, response => {
+			// const request = https.request(options, response => {
 				let buffers: Buffer[] = [];
-				response.on('data', (chunk: Buffer) =>
-					buffers.push(chunk))
-					;
+				response.on('data', (chunk: Buffer) => buffers.push(chunk));
 				response.on('end', () => {
 					//const buffer = Buffer.from(data);
 					//const string = buffer.toString();
@@ -85,12 +80,12 @@ export default class Folder extends PloneObject {
 					this.loading = false;
 					resolve(this.loaded = true);
 				});
-			});
-			request.on('error', error => {
-				this.loading = false;
-				reject(error);
-			});
-			request.end(postData);
+			// });
+			// request.on('error', error => {
+			// 	this.loading = false;
+			// 	reject(error);
+			// });
+			// request.end(postData);
 		});
 	}
 }

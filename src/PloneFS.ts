@@ -5,8 +5,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as https from 'https';
-import * as querystring from 'querystring';
+import { post } from './library/util';
 
 import { Folder, Document, File, Entry } from './library/plone';
 
@@ -182,30 +181,23 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async login({ username, password }: Credentials): Promise<string> {
-		return new Promise<string>((resolve, reject) => {
-			const postData = querystring.stringify({
-				"__ac_name": username,
-				"__ac_password": password,
-				"form.submitted": 1,
-			});
-			const options = {
-				method: 'POST',
-				host: this.rootFolder.uri.authority,
-				// TODO: move all requests to util and escape all paths
-				path: this.rootFolder.uri.path + '/login_form',
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-					'Content-Length': Buffer.byteLength(postData),
-				},
-			};
-			const request = https.request(options);
-			request.on('response', response => {
-				const cookie = response.headers["set-cookie"][0];
-				resolve(cookie);
-			});
-			request.on('error', error => reject(error));
-			request.end(postData);
-		});
+		const options = {
+			host: this.rootFolder.uri.authority,
+			// TODO: escape path or have
+			path: this.rootFolder.uri.path + '/login_form',
+		};
+		const postData = {
+			"__ac_name": username,
+			"__ac_password": password,
+			"form.submitted": 1,
+		};
+		const response = await post(options, postData);
+		if (response.headers['set-cookie'] && response.headers['set-cookie'][0].startsWith('__ac=')) {
+			return response.headers['set-cookie'][0];
+		}
+		else {
+			throw vscode.FileSystemError.NoPermissions(this.rootFolder.uri);
+		}
 	}
 
 	private async myLookup(uri: vscode.Uri): Promise<Entry> {

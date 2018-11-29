@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
-import * as http from 'http';
 import * as https from 'https';
 import PloneObject from './PloneObject';
-import * as mime from 'mime/lite';
+import { post } from '../util';
 
 export default class File extends PloneObject {
 	data: Uint8Array;
@@ -85,7 +84,7 @@ export default class File extends PloneObject {
 				"Cookie": cookie,
 			},
 		};
-		const response = await this.post(options, postData);
+		const response = await post(options, postData);
 		if (response.statusCode === 302) {
 			return this.exists = true;
 		}
@@ -94,70 +93,70 @@ export default class File extends PloneObject {
 		}
 	}
 
-	async create(cookie: string) {
-		const options = {
-			host: this.uri.authority,
-			path: File.escapePath(this.path.dir) + '/tinymce-upload',
-			headers: {
-				"Cookie": cookie,
-			},
-		};
-		const contentType = mime.getType(this.name) || 'text/plain';
-		const postData = {
-			uploadfile: {
-				filename: this.name,
-				data: Buffer.from(contentType), //this.data,
-				contentType, // if the type is text/* plone will create a page, not a file
-			},
-			uploadtitle: this.name,
-			uploaddescription: '',
-		};
-		const response = await this.post(options, postData);
-		if (response.statusCode === 200) {
-			return this.exists = true;
-		}
-		else {
-			throw new Error(`${response.statusCode}: ${response.statusMessage}`);
-		}
-	}
+	// async create(cookie: string) {
+	// 	const options = {
+	// 		host: this.uri.authority,
+	// 		path: File.escapePath(this.path.dir) + '/tinymce-upload',
+	// 		headers: {
+	// 			"Cookie": cookie,
+	// 		},
+	// 	};
+	// 	// const contentType = mime.getType(this.name) || 'text/plain';
+	// 	const postData = {
+	// 		uploadfile: {
+	// 			filename: this.name,
+	// 			data: Buffer.from('\n'), //this.data,
+	// 			// contentType, // if the type is text/* plone will create a page, not a file
+	// 		},
+	// 		uploadtitle: this.name,
+	// 		uploaddescription: '',
+	// 	};
+	// 	const response = await post(options, postData);
+	// 	if (response.statusCode === 200) {
+	// 		return this.exists = true;
+	// 	}
+	// 	else {
+	// 		throw new Error(`${response.statusCode}: ${response.statusMessage}`);
+	// 	}
+	// }
 
-	private async post(options: http.RequestOptions, postData: { [name: string]: string | { filename: string, data: Uint8Array, contentType?: string } }) {
-		return new Promise<http.IncomingMessage>(resolve => {
-			const lineEnd = '\r\n';
-			const twoHyphens = '--';
-			const boundary = '*****' + Date.now().toString(36);
-			options = {
-				...options,
-				method: 'POST',
-				headers: {
-					...options.headers,
-					'Content-Type': 'multipart/form-data; charset=utf-8; boundary=' + boundary,
-					// "Content-Length": ???
-				}
-			};
-			const request = https.request(options, response => {
-				resolve(response);
-			});
-			for (const name in postData) {
-				const value = postData[name];
-				request.write(twoHyphens + boundary + lineEnd);
-				if (typeof value === 'string') {
-					request.write(`Content-Disposition: form-data; name="${name}"`);
-					request.write(lineEnd + lineEnd);
-					request.write(value.toString());
-				}
-				else {
-					const filename = value.filename;
-					const contentType = value.contentType || mime.getType(filename) || 'text/plain';
-					request.write(`Content-Disposition: form-data; name="${name}"; filename="${filename}"`);
-					request.write(lineEnd);
-					request.write(`Content-Type: ${contentType}`);
-					request.write(lineEnd + lineEnd);
-					request.write(value.data);
-				}
-				request.write(lineEnd);
-			}
-			request.end(twoHyphens + boundary + twoHyphens + lineEnd);
-		});
-	}
+	// private async post(options: http.RequestOptions, postData: { [name: string]: string | { filename: string, data: Uint8Array, contentType?: string } }) {
+	// 	return new Promise<http.IncomingMessage>(resolve => {
+	// 		const lineEnd = '\r\n';
+	// 		const twoHyphens = '--';
+	// 		const boundary = '*****' + Date.now().toString(36);
+	// 		options = {
+	// 			...options,
+	// 			method: 'POST',
+	// 			headers: {
+	// 				...options.headers,
+	// 				'Content-Type': 'multipart/form-data; charset=utf-8; boundary=' + boundary,
+	// 				// "Content-Length": ???
+	// 			}
+	// 		};
+	// 		const request = https.request(options, response => {
+	// 			resolve(response);
+	// 		});
+	// 		for (const name in postData) {
+	// 			const value = postData[name];
+	// 			request.write(twoHyphens + boundary + lineEnd);
+	// 			if (typeof value === 'string') {
+	// 				request.write(`Content-Disposition: form-data; name="${name}"`);
+	// 				request.write(lineEnd + lineEnd);
+	// 				request.write(value.toString());
+	// 			}
+	// 			else {
+	// 				const filename = value.filename;
+	// 				const contentType = value.contentType || mime.getType(filename) || 'text/plain';
+	// 				request.write(`Content-Disposition: form-data; name="${name}"; filename="${filename}"`);
+	// 				request.write(lineEnd);
+	// 				request.write(`Content-Type: ${contentType}`);
+	// 				request.write(lineEnd + lineEnd);
+	// 				request.write(value.data);
+	// 			}
+	// 			request.write(lineEnd);
+	// 		}
+	// 		request.end(twoHyphens + boundary + twoHyphens + lineEnd);
+	// 	});
+	// }
 }
