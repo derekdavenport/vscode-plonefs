@@ -4,6 +4,26 @@ import * as https from 'https';
 import * as querystring from 'querystring';
 import * as mime from 'mime/lite';
 
+/**
+ * helper function to use promise instead of setting a callback
+ * @param options Request Options
+ */
+export function get(options: https.RequestOptions) {
+	return new Promise<http.IncomingMessage>((resolve, reject) => {
+		const request = https.get(options);
+		request.on('response', response => resolve(response));
+		request.on('error', error => reject(error));
+	});
+}
+export function getBuffer(response: http.IncomingMessage) {
+	return new Promise<Buffer>((resolve, reject) => {
+		let buffers: Buffer[] = [];
+		response.on('data', (chunk: Buffer) => buffers.push(chunk));
+		response.on('end', () => resolve(Buffer.concat(buffers)));
+		response.on('error', error => reject(error));
+	});
+}
+
 type FileType = {
 	filename: string,
 	data: Uint8Array,
@@ -51,7 +71,7 @@ function isFormData(data: FormData | MultipartData): data is FormData {
 
 // export async function post(options: https.RequestOptions, formData: FormData): Promise<http.IncomingMessage>;
 // export async function post(options: https.RequestOptions, formData: MultipartData): Promise<http.IncomingMessage>;
-export async function post(options: https.RequestOptions, formData: FormData | MultipartData): Promise<http.IncomingMessage> {
+export function post(options: https.RequestOptions, formData: FormData | MultipartData): Promise<http.IncomingMessage> {
 	if (isFormData(formData)) {
 		return postFormData(options, formData);
 	}
@@ -60,7 +80,7 @@ export async function post(options: https.RequestOptions, formData: FormData | M
 	}
 }
 
-async function postFormData(options: https.RequestOptions, formData: FormData) {
+function postFormData(options: https.RequestOptions, formData: FormData) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
 		const formDataBuffer = Buffer.from(querystring.stringify(formData));
 		options = {
@@ -79,7 +99,7 @@ async function postFormData(options: https.RequestOptions, formData: FormData) {
 	});
 }
 
-async function postMultipartData(options: https.RequestOptions, multipartData: MultipartData) {
+function postMultipartData(options: https.RequestOptions, multipartData: MultipartData) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
 		const lineEnd = '\r\n';
 		const twoHyphens = '--';

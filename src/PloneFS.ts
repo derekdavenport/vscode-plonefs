@@ -14,42 +14,43 @@ export type Credentials = {
 	password: string;
 };
 
-export type CredentialStore = {
-	[uri: string]: Credentials;
+export type Cookie = string;
+
+export type CookieStore = {
+	[uri: string]: Cookie;
 };
 
 
 export default class PloneFS implements vscode.FileSystemProvider {
-	private readonly credentialStore: CredentialStore;
+	private readonly cookieStore: CookieStore;
 
 	rootFolder: Folder;// = new Folder(vscode.Uri.parse('plone:/'));
-	cookie: Promise<string>;
+	cookie: string;
 
-	constructor(credentialStore: CredentialStore) {
-		this.credentialStore = credentialStore;
+	// haven't figured out how to just pass in the root uri and cookie
+	// so I pass in all cookies then use first stat call to set root uri and get the cookie
+	constructor(cookieStore: CookieStore) {
+		this.cookieStore = cookieStore;
 	}
 
 	// --- manage file metadata
 
+	// since I haven't figured out how to load PloneFS before opening the workspace
+	// first call to stat gives the root folder uri
 	async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
 		let entry: Entry;
-		// first call to stat will be root folder
 		if (!this.rootFolder) {
-			const credentials = this.credentialStore[uri.authority + uri.path];
-			if (credentials) {
-				// TODO: test login success
+			const cookie = this.cookieStore[uri.authority + uri.path];
+			if (cookie) {
 				this.rootFolder = new Folder(uri);
-				this.cookie = this.login(credentials);
-				await this.cookie;
+				this.cookie = cookie;
 				entry = this.rootFolder;
 			}
 			else {
-				throw vscode.FileSystemError.NoPermissions('no credentials');
+				throw vscode.FileSystemError.NoPermissions('no cookie');
 			}
 		}
 		else {
-			// extension is making more stat calls before login finishes and loads root
-			await this.cookie;
 			entry = await this.myLookup(uri);
 		}
 		return entry;
@@ -57,7 +58,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
 		const entry = await this._lookupAsFolder(uri, false);
-		const loaded = await entry.load(await this.cookie);
+		const loaded = await entry.load(this.cookie);
 		if (!loaded) {
 			throw vscode.FileSystemError.Unavailable('could not load');
 		}
@@ -72,7 +73,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
 		const entry = await this._lookupAsFile(uri, false);
-		const loaded = await entry.load(await this.cookie);
+		const loaded = await entry.load(this.cookie);
 		if (!loaded) {
 			throw vscode.FileSystemError.Unavailable('unable to load file');
 			// todo: try again?
@@ -104,7 +105,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		entry.size = content.byteLength;
 		entry.data = content;
 
-		const saved = await entry.save(await this.cookie);
+		const saved = await entry.save(this.cookie);
 		if (saved) {
 			this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
 		}
@@ -130,7 +131,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (oldParent === newParent) {
 			// rename!
 			entry.name = newName;
-			await entry.save(await this.cookie);
+			await entry.save(this.cookie);
 		}
 		else {
 			throw vscode.FileSystemError.Unavailable('not implemented');
@@ -161,14 +162,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { uri, type: vscode.FileChangeType.Deleted });
 	}
 
-	async createDirectory(uri: vscode.Uri) {
+	async createDirectory(uri: vscode.Uri): Promise<void> {
 		// let basename = path.posix.basename(uri.path);
 		let dirname = uri.with({ path: path.posix.dirname(uri.path) });
 		let parent = await this._lookupAsFolder(dirname, false);
 		// check if exists
 
 		let entry = new Folder(uri);
-		const saved = await entry.save(await this.cookie);
+		const saved = await entry.save(this.cookie);
 		if (saved) {
 			parent.entries.set(entry.name, entry);
 			parent.mtime = Date.now();
@@ -180,23 +181,23 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 	}
 
-	async login({ username, password }: Credentials): Promise<string> {
+	static async login(uri: vscode.Uri, { username, password }: Credentials): Promise<string> {
 		const options = {
-			host: this.rootFolder.uri.authority,
+			host: uri.authority,
 			// TODO: escape path or have
-			path: this.rootFolder.uri.path + '/login_form',
+			path: uri.path + '/login_form',
 		};
 		const postData = {
-			"__ac_name": username,
-			"__ac_password": password,
-			"form.submitted": 1,
+			__ac_name: username,
+			__ac_password: password,
+			'form.submitted': 1,
 		};
 		const response = await post(options, postData);
 		if (response.headers['set-cookie'] && response.headers['set-cookie'][0].startsWith('__ac=')) {
 			return response.headers['set-cookie'][0];
 		}
 		else {
-			throw vscode.FileSystemError.NoPermissions(this.rootFolder.uri);
+			throw vscode.FileSystemError.NoPermissions(uri);
 		}
 	}
 
@@ -211,7 +212,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			const parts = relativePath.dir.split('/');
 			for (const part of parts) {
 				if (!folder.loaded) {
-					await folder.load(await this.cookie);
+					await folder.load(this.cookie);
 				}
 				// TODO: divide entries into folder entries and other entries?
 				const tempEntry = folder.entries.get(part);
@@ -223,7 +224,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 		let entry: Entry | undefined;
 		if (!folder.loaded) {
-			await folder.load(await this.cookie);
+			await folder.load(this.cookie);
 		}
 		entry = folder.entries.get(relativePath.base);
 		if (!entry) {
@@ -250,7 +251,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			else if (entry instanceof Folder) {
 				// this can happen when VSCode restores a saved workspace with open folders
 				if (!entry.loaded) {
-					await entry.load(await this.cookie);
+					await entry.load(this.cookie);
 				}
 				child = entry.entries.get(part);
 			}

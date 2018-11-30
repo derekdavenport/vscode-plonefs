@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import * as https from 'https';
 import PloneObject from './PloneObject';
-import { post } from '../util';
+import { get, buffer, post } from '../util';
 
 export default class File extends PloneObject {
 	data: Uint8Array;
@@ -13,47 +12,43 @@ export default class File extends PloneObject {
 		this.language = 'plaintext';
 	}
 
-	async load(cookie: string): Promise<boolean> {
+	load(cookie: string): Promise<boolean> {
 		if (this.loading) {
 			return this.loadingPromise;
 		}
 		this.loading = true;
-		const languages = await vscode.languages.getLanguages();
-		return this.loadingPromise = new Promise<boolean>((resolve, reject) => {
-			const request = https.get({
-				host: this.uri.authority,
-				path: File.escapePath(this.uri.path) + '/at_download/file',
-				headers: {
-					Cookie: cookie,
-				}
-			}, response => {
-				if (response.statusCode === 200) {
-					const contentType = response.headers['content-type'];
-					if (contentType) {
-						const mimeType = contentType.split(';')[0];
-						const [type, subtype] = mimeType.split('/');
-						if (languages.indexOf(subtype) >= 0) {
-							this.language = subtype;
-						}
-						else if (languages.indexOf(type) >= 0) {
-							this.language = type;
-						}
-					}
-					let buffers: Buffer[] = [];
-					response.on('data', (chunk: Buffer) => buffers.push(chunk));
-					response.on('end', () => {
-						this.data = Buffer.concat(buffers);
-						this.loading = false;
-						resolve(this.loaded = true);
-					});
-				}
-				else {
-					this.loading = false;
-					reject(`${response.statusCode}: ${response.statusMessage}`);
-				}
-			});
-			request.end();
+		return this.loadingPromise = this._load(cookie);
+	}
+
+	private async _load(cookie: string) {
+		const languagesPromise = vscode.languages.getLanguages();
+		const response = await get({
+			host: this.uri.authority,
+			path: File.escapePath(this.uri.path) + '/at_download/file',
+			headers: {
+				Cookie: cookie,
+			}
 		});
+		if (response.statusCode !== 200) {
+				this.loading = false;
+				throw new Error(`${response.statusCode}: ${response.statusMessage}`);
+			}
+
+			const contentType = response.headers['content-type'];
+			if (contentType) {
+				const mimeType = contentType.split(';')[0];
+				const [type, subtype] = mimeType.split('/');
+				const languages = await languagesPromise;
+				if (languages.indexOf(subtype) >= 0) {
+					this.language = subtype;
+				}
+				else if (languages.indexOf(type) >= 0) {
+					this.language = type;
+				}
+			}
+			this.data = await buffer(response);
+			this.loading = false;
+			return this.loaded = true;
 	}
 
 	async save(cookie: string) {

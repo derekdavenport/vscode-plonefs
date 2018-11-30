@@ -3,7 +3,7 @@ import PloneObject from './PloneObject';
 import Document from './Document';
 import File from './File';
 import { Entry } from '.';
-import { post } from '../util';
+import { post, getBuffer } from '../util';
 
 type Listing = {
 	parent_url: string;
@@ -40,52 +40,40 @@ export default class Folder extends PloneObject {
 			return this.loadingPromise;
 		}
 		this.loading = true;
-		return this.loadingPromise = new Promise<boolean>(async (resolve) => {
-			this.loaded = false;
-			const options = {
-				// method: 'POST',
-				host: this.uri.authority,
-				path: Folder.escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
-				headers: {
-					"Cookie": cookie,
-				},
-			};
-			const response = await post(options, {
-				rooted: 'True',
-				document_base_url: '/',
-			});
+		return this.loadingPromise = this._load(cookie);
+	}
 
-			// const request = https.request(options, response => {
-				let buffers: Buffer[] = [];
-				response.on('data', (chunk: Buffer) => buffers.push(chunk));
-				response.on('end', () => {
-					//const buffer = Buffer.from(data);
-					//const string = buffer.toString();
-					const json: Listing = JSON.parse(Buffer.concat(buffers).toString());
-					// json.path[0] // TODO: check if really root?
-					// json.upload_allowed // TODO: check this to know if can save?
-					for (const item of json.items) {
-						switch (item.normalized_type) {
-							case 'folder':
-								this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url), true));
-								break;
-							case 'document':
-								this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
-								break;
-							case 'file':
-								this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));
-								break;
-						}
-					}
-					this.loading = false;
-					resolve(this.loaded = true);
-				});
-			// });
-			// request.on('error', error => {
-			// 	this.loading = false;
-			// 	reject(error);
-			// });
-			// request.end(postData);
+	private async _load(cookie: string): Promise<boolean> {
+		this.loaded = false;
+		const options = {
+			host: this.uri.authority,
+			path: Folder.escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
+			headers: {
+				'Cookie': cookie,
+			},
+		};
+		const response = await post(options, {
+			rooted: 'True',
+			document_base_url: '/',
 		});
+		const buffer = await getBuffer(response);
+		const json: Listing = JSON.parse(buffer.toString());
+		// json.path[0] // TODO: check if really root?
+		// json.upload_allowed // TODO: check this to know if can save?
+		for (const item of json.items) {
+			switch (item.normalized_type) {
+				case 'folder':
+					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url), true));
+					break;
+				case 'document':
+					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
+					break;
+				case 'file':
+					this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));
+					break;
+			}
+		}
+		this.loading = false;
+		return this.loaded = true;
 	}
 }
