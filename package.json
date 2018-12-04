@@ -26,15 +26,7 @@
 				"title": "Open Plone Workspace",
 				"category": "PloneFS"
 			}
-		],
-		"menus": {
-			"commandPalette": [
-				{
-					"command": "plonefs.workspace",
-					"when": "workbenchState != workspace"
-				}
-			]
-		}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

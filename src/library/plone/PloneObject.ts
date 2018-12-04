@@ -1,8 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as https from 'https';
-import { post } from '../util';
+import { get, post } from '../util';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	type: vscode.FileType;
@@ -44,35 +43,26 @@ export default abstract class PloneObject implements vscode.FileStat {
 	}
 
 	async getNewSavePath(cookie: string) {
-		return new Promise<string>((resolve, reject) => {
-			const options = {
-				host: this.uri.authority,
-				path: PloneObject.escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
-				headers: {
-					"Cookie": cookie,
-				},
-			};
-			https.get(options, response => {
-				if (response.statusCode === 302) {
-					const location = response.headers['location'];
-					if (location) {
-						const locationPath = path.posix.parse(location);
-						if (locationPath.base.startsWith('edit')) {
-							resolve(locationPath.dir);
-						}
-						else {
-							reject('bad location');
-						}
-					}
-					else {
-						reject('no location');
-					}
-				}
-				else {
-					reject(response.statusMessage);
-				}
-			});
-		});
+		const options = {
+			host: this.uri.authority,
+			path: PloneObject.escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
+			headers: {
+				"Cookie": cookie,
+			},
+		};
+		const response = await get(options);
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
+		}
+		const location = response.headers['location'];
+		if (!location) {
+			throw vscode.FileSystemError.Unavailable('no location');
+		}
+		const locationPath = path.posix.parse(location);
+		if (!locationPath.base.startsWith('edit')) {
+			throw vscode.FileSystemError.Unavailable('bad location');
+		}
+		return locationPath.dir;
 	}
 
 	async save(cookie: string) {
@@ -91,17 +81,15 @@ export default abstract class PloneObject implements vscode.FileStat {
 			'form.submitted': 1,
 		};
 		const response = await post(options, postData);
-		if (response.statusCode === 302) {
-			// in case of rename
-			this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
-			return this.exists = true;
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
-		else {
-			throw new Error(`${response.statusCode}: ${response.statusMessage}`);
-		}
+		// in case of rename
+		this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
+		return this.exists = true;
 	}
 
-	protected static escapePath(path: string): string {
+	static escapePath(path: string): string {
 		return path.replace(/([\u0000-\u0020])/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 	}
 }

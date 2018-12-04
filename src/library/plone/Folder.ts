@@ -32,10 +32,10 @@ export default class Folder extends PloneObject {
 	constructor(uri: vscode.Uri, exists = false) {
 		super(uri, exists);
 		this.type = vscode.FileType.Directory;
-		this.entries = new Map();
+		this.entries = new Map<string, Entry>();
 	}
 
-	async load(cookie: string): Promise<boolean> {
+	load(cookie: string): Promise<boolean> {
 		if (this.loading) {
 			return this.loadingPromise;
 		}

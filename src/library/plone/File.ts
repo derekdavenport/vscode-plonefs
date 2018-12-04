@@ -20,7 +20,7 @@ export default class File extends PloneObject {
 		return this.loadingPromise = this._load(cookie);
 	}
 
-	private async _load(cookie: string) {
+	private async _load(cookie: string): Promise<boolean> {
 		const languagesPromise = vscode.languages.getLanguages();
 		const response = await get({
 			host: this.uri.authority,
@@ -31,7 +31,7 @@ export default class File extends PloneObject {
 		});
 		if (response.statusCode !== 200) {
 			this.loading = false;
-			throw new Error(`${response.statusCode}: ${response.statusMessage}`);
+			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 
 		const contentType = response.headers['content-type'];
@@ -80,11 +80,9 @@ export default class File extends PloneObject {
 			},
 		};
 		const response = await post(options, postData);
-		if (response.statusCode === 302) {
-			return this.exists = true;
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
-		else {
-			throw new Error(`${response.statusCode}: ${response.statusMessage}`);
-		}
+		return this.exists = true;
 	}
 }
