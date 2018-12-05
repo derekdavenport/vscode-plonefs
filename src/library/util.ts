@@ -62,8 +62,6 @@ function isFormData(data: FormData | MultipartData): data is FormData {
 	return Object.values(data).every(value => isValueType(value) || isValueTypeArray(value));
 }
 
-
-
 // function isMultipartData(data: FormData | MultipartData): data is MultipartData {
 // 	// this won't work because I can't force some to be filetype
 // 	return Object.values(data).some(value => isFileType(value));
@@ -151,4 +149,12 @@ function postMultipartData(options: https.RequestOptions, multipartData: Multipa
 		}
 		request.end(twoHyphens + boundary + twoHyphens + lineEnd);
 	});
+}
+
+/**
+ * escape all illegal characters in path part of URL for node http/https packages
+ * @param uriPath path to be escapped for node http/https packages
+ */
+export function escapePath(uriPath: string): string {
+	return uriPath.replace(/[\u0000-\u0020]/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 }

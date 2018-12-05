@@ -9,19 +9,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	if (vscode.workspace.workspaceFolders !== undefined) {
 		let cookies: CookieStore = {};
-		let sites: vscode.Uri[] = [];
 		for (const folder of vscode.workspace.workspaceFolders) {
 			if (folder.uri.scheme === 'plone') {
 				const cookie = await login(folder.uri);
 				if (cookie === undefined) {
 					throw vscode.FileSystemError.NoPermissions('Unable to open site: login cancelled');
 				}
-				sites.push(folder.uri);
-				cookies[folder.uri.authority] = cookie;
+				cookies[folder.uri.authority + folder.uri.path] = cookie;
 			}
 		}
-		if (sites.length) {
-			const ploneFS = new PloneFS(sites, cookies);
+		if (Object.keys(cookies).length) {
+			const ploneFS = new PloneFS(cookies);
 			context.subscriptions.push(vscode.workspace.registerFileSystemProvider('plone', ploneFS, { isCaseSensitive: false }));
 			// to VS Code Plone Documents and Plone Files are both TextDocuments
 			// so set Plone Documents to be HTML and Files to be whatever we determined them to be
@@ -42,16 +40,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	async function login(uri: vscode.Uri): Promise<string | undefined> {
 		const siteName = uri.authority + uri.path;
-		const sitesStore = context.globalState.get('sites', []);
 		const cookieStore = context.globalState.get<CookieStore>(cookieStoreName, {});
 		// check old cookie
-		const testCookie = cookieStore[uri.authority];
+		const testCookie = cookieStore[siteName];
 		if (typeof testCookie === 'string' && await PloneFS.checkCookie(uri, testCookie)) {
-			context.globalState.update('sites', [...new Set([siteName, ...sitesStore])].sort());
 			return testCookie;
 		}
 		// no cookie or too old
-		delete cookieStore[uri.authority];
+		delete cookieStore[siteName];
 		context.globalState.update(cookieStoreName, cookieStore);
 
 		// get cookie with username/password
@@ -79,9 +75,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			try {
 				cookie = await PloneFS.login(uri, { username, password });
-				cookieStore[uri.authority] = cookie;
+				cookieStore[siteName] = cookie;
 				context.globalState.update(cookieStoreName, cookieStore);
-				context.globalState.update('sites', [...new Set([siteName, ...sitesStore])].sort());
 				return cookie;
 			}
 			catch (e) {
@@ -93,11 +88,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined, cookie: string | undefined;
 		while (!cookie) {
-			const items = context.globalState.get('sites', []);
+			const items = Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {}));
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				canPickMany: false,
 			});
+			// cancelled
 			if (pick === undefined) {
 				return;
 			}
@@ -115,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (uri) {
 				vscode.workspace.updateWorkspaceFolders(
 					0, 0, {
-						name: uri.path,
+						name: uri.authority + uri.path,
 						uri,
 					},
 				);

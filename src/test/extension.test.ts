@@ -1,5 +1,5 @@
 'use strict';
-import * as vscode from 'vscode';
+//import * as vscode from 'vscode';
 
 // import PloneFS, { CookieStore } from '../PloneFS';
 jest.mock('../PloneFS', jest.fn());

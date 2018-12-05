@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
-import PloneObject from './PloneObject';
-import { get, getBuffer, post } from '../util';
+import { get, getBuffer, post, escapePath } from '../util';
+import { BaseFile } from '.';
 
-export default class File extends PloneObject {
-	data: Uint8Array;
+export default class File extends BaseFile {
 	language: string;
 
 	constructor(uri: vscode.Uri, exists = false) {
 		super(uri, exists);
-		this.type = vscode.FileType.File;
 		this.language = 'plaintext';
 	}
 
@@ -24,7 +22,7 @@ export default class File extends PloneObject {
 		const languagesPromise = vscode.languages.getLanguages();
 		const response = await get({
 			host: this.uri.authority,
-			path: File.escapePath(this.uri.path) + '/at_download/file',
+			path: escapePath(this.uri.path) + '/at_download/file',
 			headers: {
 				Cookie: cookie,
 			}
@@ -74,7 +72,7 @@ export default class File extends PloneObject {
 		};
 		const options = {
 			host: this.uri.authority,
-			path: File.escapePath(savePath) + '/atct_edit',
+			path: escapePath(savePath) + '/atct_edit',
 			headers: {
 				"Cookie": cookie,
 			},

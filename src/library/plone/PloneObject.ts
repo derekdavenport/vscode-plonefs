@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post } from '../util';
+import { get, post, escapePath } from '../util';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	type: vscode.FileType;
@@ -26,9 +26,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 	loading: boolean;
 	loaded: boolean;
 	loadingPromise: Promise<boolean>;
-	abstract load(string?): Promise<boolean>;
+	abstract load(string): Promise<boolean>;
 
 	exists: boolean;
+
+	settings: Map<string, Buffer>;
 
 	constructor(uri: vscode.Uri, exists = false) {
 		this.ctime = this.mtime = Date.now();
@@ -45,7 +47,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	async getNewSavePath(cookie: string) {
 		const options = {
 			host: this.uri.authority,
-			path: PloneObject.escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
+			path: escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
 			headers: {
 				"Cookie": cookie,
 			},
@@ -65,14 +67,70 @@ export default abstract class PloneObject implements vscode.FileStat {
 		return locationPath.dir;
 	}
 
+	protected parseExternalEdit(buffer: Buffer): Buffer {
+		this.settings = new Map<string, Buffer>();
+		let lineStart: number, lineEnd: number, nextLineStart = 0;
+		let key: string | undefined, value: Buffer;
+		enum Mode {
+			Header,
+			Python,
+			Content,
+		}
+		const newline = '\n'.charCodeAt(0);
+		const creturn = '\r'.charCodeAt(0);
+		const colon = ':'.charCodeAt(0);
+		const space = ' '.charCodeAt(0);
+		// Header uses ':', Python uses ': '
+		const valueStartOffsets = {
+			[Mode.Header]: ':'.length,
+			[Mode.Python]: ': '.length,
+		};
+		let mode: Mode = Mode.Header;
+		while (mode !== Mode.Content && (lineEnd = buffer.indexOf(newline, nextLineStart)) !== -1) {
+			lineStart = nextLineStart;
+			nextLineStart = lineEnd + 1;
+			// backtrack 1 if \r\n used
+			if (buffer[lineEnd - 1] === creturn) {
+				lineEnd--;
+			}
+			// blank line signals format change
+			if (lineStart === lineEnd) {
+				switch (mode) {
+					case Mode.Header:
+						mode = Mode.Python;
+						break;
+					case Mode.Python:
+						mode = Mode.Content;
+						break;
+				}
+			}
+			else {
+				let colonIndex = buffer.indexOf(colon, lineStart);
+				key = buffer.slice(lineStart, colonIndex).toString();
+				value = buffer.slice(colonIndex + valueStartOffsets[mode], lineEnd);
+				// check for multiline value
+				while (buffer[nextLineStart] === space) {
+					// TODO: locallyAllowedTypes does not have extra blank line
+					lineStart = nextLineStart + '  \r\n  '.length;
+					// this section should always use \r\n
+					lineEnd = buffer.indexOf(creturn, lineStart);
+					nextLineStart = lineEnd + '\r\n'.length;
+					value = Buffer.concat([value, Buffer.from('\n'), buffer.slice(lineStart, lineEnd)]);
+				}
+				this.settings.set(key, value);
+			}
+		}
+		return buffer.slice(nextLineStart);
+	}
+
 	async save(cookie: string) {
 		// if doesn't exist, create
 		const savePath = this.exists ? this.uri.path : await this.getNewSavePath(cookie);
 		const options = {
 			host: this.uri.authority,
-			path: PloneObject.escapePath(savePath) + '/atct_edit',
+			path: escapePath(savePath) + '/atct_edit',
 			headers: {
-				"Cookie": cookie,
+				Cookie: cookie,
 			},
 		};
 		const postData = {
@@ -87,9 +145,5 @@ export default abstract class PloneObject implements vscode.FileStat {
 		// in case of rename
 		this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
 		return this.exists = true;
-	}
-
-	static escapePath(path: string): string {
-		return path.replace(/([\u0000-\u0020])/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 	}
 }

@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
-import PloneObject from './PloneObject';
-import Document from './Document';
-import File from './File';
-import { Entry } from '.';
-import { post, getBuffer } from '../util';
+import { PloneObject, Document, File, LocalCss, Entry } from '.';
+import { post, getBuffer, escapePath } from '../util';
 
 type Listing = {
 	parent_url: string;
@@ -45,9 +42,10 @@ export default class Folder extends PloneObject {
 
 	private async _load(cookie: string): Promise<boolean> {
 		this.loaded = false;
+		this.entries.set('local.css', new LocalCss(this.uri, true));
 		const options = {
 			host: this.uri.authority,
-			path: Folder.escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
+			path: escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
 			headers: {
 				'Cookie': cookie,
 			},
@@ -66,7 +64,8 @@ export default class Folder extends PloneObject {
 					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url), true));
 					break;
 				case 'document':
-					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
+				this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
+				this.entries.set(item.id + '.css', new LocalCss(vscode.Uri.parse(item.url), true));
 					break;
 				case 'file':
 					this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));
