@@ -88,7 +88,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined, cookie: string | undefined;
 		while (!cookie) {
-			const items = Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {}));
+			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})), 'new'];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				canPickMany: false,

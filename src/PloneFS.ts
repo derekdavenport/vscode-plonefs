@@ -187,15 +187,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 		let entry = new Folder(uri);
 		const saved = await entry.save(this.getCookie(uri));
-		if (saved) {
-			parent.entries.set(entry.name, entry);
-			parent.mtime = Date.now();
-			parent.size += 1;
-			this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
-		}
-		else {
+		if (!saved) {
 			throw vscode.FileSystemError.Unavailable(uri);
 		}
+		parent.entries.set(entry.name, entry);
+		parent.mtime = Date.now();
+		parent.size += 1;
+		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
 	}
 
 	static async login(uri: vscode.Uri, { username, password }: Credentials): Promise<string> {
@@ -209,12 +207,10 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			'form.submitted': 1,
 		};
 		const response = await post(options, postData);
-		if (response.headers['set-cookie'] && response.headers['set-cookie'][0].startsWith('__ac=')) {
-			return response.headers['set-cookie'][0];
-		}
-		else {
+		if (!response.headers['set-cookie'] || !response.headers['set-cookie'][0].startsWith('__ac=')) {
 			throw vscode.FileSystemError.NoPermissions(uri);
 		}
+		return response.headers['set-cookie'][0];
 	}
 
 	static async checkCookie(uri: vscode.Uri, cookie: Cookie): Promise<boolean> {
@@ -262,18 +258,18 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder> {
 		const entry = await this._lookup(uri, silent);
-		if (entry instanceof Folder) {
-			return entry;
+		if (!(entry instanceof Folder)) {
+			throw vscode.FileSystemError.FileNotADirectory(uri);
 		}
-		throw vscode.FileSystemError.FileNotADirectory(uri);
+		return entry;
 	}
 
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile> {
 		const entry = await this._lookup(uri, silent);
-		if (entry instanceof BaseFile) {
-			return entry;
+		if (!(entry instanceof BaseFile)) {
+			throw vscode.FileSystemError.FileIsADirectory(uri);
 		}
-		throw vscode.FileSystemError.FileIsADirectory(uri);
+		return entry;
 	}
 
 	private async _lookupParentFolder(uri: vscode.Uri): Promise<Folder> {
