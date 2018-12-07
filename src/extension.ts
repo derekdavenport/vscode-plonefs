@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore } from './PloneFS';
-import { Document, File } from './library/plone';
+import { Document, File, PloneObject } from './library/plone';
 const cookieStoreName = 'cookieStore';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -35,6 +35,31 @@ export async function activate(context: vscode.ExtensionContext) {
 					}
 				}
 			}));
+
+			async function setSetting(uri, settingName) {
+				const stat = await ploneFS.stat(uri);
+				if (stat instanceof PloneObject) {
+					const oldBuffer = stat.settings.get(settingName);
+					const newValue = await vscode.window.showInputBox({
+						prompt: 'Set ' + settingName,
+						value: oldBuffer && oldBuffer.toString(),
+					});
+					if (newValue) {
+						stat.settings.set(settingName, Buffer.from(newValue));
+						// save
+					}
+				}
+			}
+
+			context.subscriptions.push(vscode.commands.registerCommand(
+				'plonefs.setTitle',
+				uri => setSetting(uri, 'title')
+			));
+
+			context.subscriptions.push(vscode.commands.registerCommand(
+				'plonefs.setDescription',
+				uri => setSetting(uri, 'description')
+			));
 		}
 	}
 

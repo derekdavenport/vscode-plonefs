@@ -6,6 +6,7 @@ Move and Delete currently unsupported.
 
 ## TODO
 
+* site root local CSS doesn't work because it's saved in a different location
 * login again after cookie expires
 * edit static portlets, maybe title/description
 * support move and delete

@@ -25,8 +25,32 @@
 				"command": "plonefs.workspace",
 				"title": "Open Plone Workspace",
 				"category": "PloneFS"
+			},
+			{
+				"command": "plonefs.setTitle",
+				"title": "Set Title",
+				"category": "PloneFS"
+			},
+			{
+				"command": "plonefs.setDescription",
+				"title": "Set Description",
+				"category": "PloneFS"
 			}
-		]
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"when": "resourceScheme == plone",
+					"command": "plonefs.setTitle",
+					"group": "PloneFS"
+				},
+				{
+					"when": "resourceScheme == plone",
+					"command": "plonefs.setDescription",
+					"group": "PloneFS"
+				}
+			]
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
