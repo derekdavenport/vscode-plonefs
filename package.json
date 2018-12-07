@@ -2,8 +2,8 @@
 	"name": "vscode-plonefs",
 	"displayName": "PloneFS",
 	"description": "Open Plone sites",
-	"version": "0.1.0",
-	"publisher": "Derek Davenport",
+	"version": "0.1.2",
+	"publisher": "derekdavenport",
 	"repository": {
 		"url": "https://github.com/derekdavenport/plonefs.git",
 		"type": "git"

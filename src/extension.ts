@@ -15,7 +15,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (cookie === undefined) {
 					throw vscode.FileSystemError.NoPermissions('Unable to open site: login cancelled');
 				}
-				cookies[folder.uri.authority + folder.uri.path] = cookie;
+				cookies[getSiteName(folder.uri)] = cookie;
 			}
 		}
 		if (Object.keys(cookies).length) {
@@ -39,7 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	async function login(uri: vscode.Uri): Promise<string | undefined> {
-		const siteName = uri.authority + uri.path;
+		const siteName = getSiteName(uri);
 		const cookieStore = context.globalState.get<CookieStore>(cookieStoreName, {});
 		// check old cookie
 		const testCookie = cookieStore[siteName];
@@ -98,8 +98,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 			let uriValue = pick !== 'new' ? pick : await vscode.window.showInputBox({
-				value: 'louisville.edu/',
 				prompt: 'Open new Plone site',
+				placeHolder: 'example.com/sitename',
 			});
 			// cancelled
 			if (uriValue === undefined) {
@@ -111,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (uri) {
 				vscode.workspace.updateWorkspaceFolders(
 					0, 0, {
-						name: uri.authority + uri.path,
+						name: getSiteName(uri),
 						uri,
 					},
 				);
@@ -120,3 +120,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	}));
 }
 
+function getSiteName(uri: vscode.Uri): string {
+	return uri.authority + uri.path;
+}
