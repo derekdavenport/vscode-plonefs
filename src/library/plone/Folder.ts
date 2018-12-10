@@ -25,9 +25,11 @@ type Item = {
 export default class Folder extends PloneObject {
 
 	entries: Map<string, Entry>;
+	isRoot: boolean;
 
-	constructor(uri: vscode.Uri, exists = false) {
+	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
+		this.isRoot = isRoot;
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 	}
@@ -42,7 +44,7 @@ export default class Folder extends PloneObject {
 
 	private async _load(cookie: string): Promise<boolean> {
 		this.loaded = false;
-		this.entries.set('local.css', new LocalCss(this.uri, true));
+		this.entries.set('local.css', new LocalCss(this.uri, true, this.isRoot));
 		const options = {
 			host: this.uri.authority,
 			path: escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',

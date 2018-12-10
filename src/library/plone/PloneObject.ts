@@ -9,7 +9,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	mtime: number;
 	size: number;
 
-	private _uri: vscode.Uri;
+	private _uri!: vscode.Uri;
 	get uri() {
 		return this._uri;
 	}
@@ -17,7 +17,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this._uri = uri;
 		this._path = path.posix.parse(uri.path);
 	}
-	private _path: path.ParsedPath;
+	private _path!: path.ParsedPath;
 	get path() {
 		return this._path;
 	}
@@ -26,13 +26,14 @@ export default abstract class PloneObject implements vscode.FileStat {
 	loading: boolean;
 	loaded: boolean;
 	loadingPromise: Promise<boolean>;
-	abstract load(string): Promise<boolean>;
+	abstract load(cookie: string): Promise<boolean>;
 
 	exists: boolean;
 
 	settings: Map<string, Buffer>;
 
 	constructor(uri: vscode.Uri, exists = false) {
+		this.type = vscode.FileType.Unknown;
 		this.ctime = this.mtime = Date.now();
 		this.size = 0;
 		this.uri = uri;
@@ -40,8 +41,10 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 		this.loading = false;
 		this.loaded = false;
+		this.loadingPromise = Promise.resolve(false);
 
 		this.exists = exists;
+		this.settings = new Map<string, Buffer>();
 	}
 
 	async getNewSavePath(cookie: string) {
@@ -68,7 +71,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	}
 
 	protected parseExternalEdit(buffer: Buffer): Buffer {
-		this.settings = new Map<string, Buffer>();
+		this.settings.clear();
 		let lineStart: number, lineEnd: number, nextLineStart = 0;
 		let key: string | undefined, value: Buffer;
 		enum Mode {

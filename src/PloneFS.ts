@@ -45,7 +45,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				parent.entries.set(part, folder);
 				parent = folder;
 			}
-			// last folder is not loaded
+			// last folder is site root and is not loaded
+			parent.isRoot = true;
 			parent.loaded = false;
 		}
 	}
@@ -281,7 +282,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	private _bufferedEvents: vscode.FileChangeEvent[] = [];
-	private _fireSoonHandle: NodeJS.Timer;
+	private _fireSoonHandle!: NodeJS.Timer;
 
 	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 

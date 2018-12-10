@@ -1,21 +1,22 @@
 {
-    "compilerOptions": {
-        "strictNullChecks": true,
-        "module": "commonjs",
-        "target": "es6",
-        "outDir": "out",
-        "lib": [
-            "es2017"
-        ],
-        "sourceMap": true,
-				"rootDir": ".",
-				"strict": false,
-				"noUnusedLocals": true,
-				"noImplicitReturns": true,
-				"noUnusedParameters": true,
-    },
-    "exclude": [
-        "node_modules",
-        ".vscode-test"
-    ]
+	"compilerOptions": {
+		"strictNullChecks": true,
+		"module": "commonjs",
+		"target": "es6",
+		"outDir": "out",
+		"lib": [
+			"es2017"
+		],
+		"sourceMap": true,
+		"rootDir": ".",
+		"strict": true,
+		"noUnusedLocals": true,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"noUnusedParameters": true,
+	},
+	"exclude": [
+		"node_modules",
+		".vscode-test"
+	]
 }

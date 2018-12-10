@@ -36,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}));
 
-			async function setSetting(uri, settingName) {
+			async function setSetting(uri: vscode.Uri, settingName: string) {
 				const stat = await ploneFS.stat(uri);
 				if (stat instanceof PloneObject) {
 					const oldBuffer = stat.settings.get(settingName);

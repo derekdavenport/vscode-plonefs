@@ -5,7 +5,7 @@
 	"version": "0.1.2",
 	"publisher": "derekdavenport",
 	"repository": {
-		"url": "https://github.com/derekdavenport/plonefs.git",
+		"url": "https://github.com/derekdavenport/vscode-plonefs",
 		"type": "git"
 	},
 	"engines": {
@@ -64,13 +64,14 @@
 		"test:integration": "npm run compile && node ./node_modules/vscode/bin/test"
 	},
 	"devDependencies": {
-		"@types/node": "^10.12.10",
-		"@types/jest": "^23.3.9",
-		"typescript": "^3.1.6",
-		"vscode": "^1.1.22",
-		"tslint": "^5.8.0"
+		"@types/jest": "^23.3.10",
+		"@types/mime": "^2.0.0",
+		"@types/node": "^10.12.12",
+		"tslint": "^5.11.0",
+		"typescript": "^3.2.2",
+		"vscode": "^1.1.26"
 	},
 	"dependencies": {
-		"mime": "^2.3.1"
+		"mime": "^2.4.0"
 	}
 }

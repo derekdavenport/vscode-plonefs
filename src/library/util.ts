@@ -78,7 +78,7 @@ export function post(options: https.RequestOptions, formData: FormData | Multipa
 	}
 }
 
-function postFormData(options: https.RequestOptions, formData: FormData) {
+export function postFormData(options: https.RequestOptions, formData: FormData) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
 		const formDataBuffer = Buffer.from(querystring.stringify(formData));
 		options = {
@@ -97,7 +97,7 @@ function postFormData(options: https.RequestOptions, formData: FormData) {
 	});
 }
 
-function postMultipartData(options: https.RequestOptions, multipartData: MultipartData) {
+export function postMultipartData(options: https.RequestOptions, multipartData: MultipartData) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
 		const lineEnd = '\r\n';
 		const twoHyphens = '--';

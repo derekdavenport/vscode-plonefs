@@ -11,6 +11,7 @@ export default abstract class BaseFile extends PloneObject {
 	constructor(uri: vscode.Uri, exists = false) {
 		super(uri, exists);
 		this.type = vscode.FileType.File;
+		this.data = Buffer.from('');
 	}
 
 	async save(cookie: string): Promise<boolean> {
@@ -18,14 +19,14 @@ export default abstract class BaseFile extends PloneObject {
 			return super.save(cookie);
 		}
 		const postData = {
-			fieldname: this.constructor['fieldname'],
-			text: this.data.toString(),
+			fieldname: (this.constructor as typeof BaseFile)['fieldname'],
+			text: this.data.toString(), // TODO: support buffer
 		};
 		const options = {
 			host: this.uri.authority,
 			path: escapePath(this.uri.path) + '/tinymce-save',
 			headers: {
-				"Cookie": cookie,
+				Cookie: cookie,
 			},
 		};
 		const response = await post(options, postData);
