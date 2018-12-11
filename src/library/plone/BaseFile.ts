@@ -6,7 +6,6 @@ import { RequestOptions } from 'https';
 
 export default abstract class BaseFile extends PloneObject {
 	data: Uint8Array;
-	static readonly savedText = Buffer.from('saved');
 	static readonly fieldname: string;
 
 	constructor(uri: vscode.Uri, exists = false) {
@@ -26,7 +25,7 @@ export default abstract class BaseFile extends PloneObject {
 		};
 		const postData = {
 			fieldname: (this.constructor as typeof BaseFile).fieldname,
-			text: this.data.toString(), // TODO: support buffer
+			text: this.data.toString(), // TODO: support buffer?
 		};
 		const response = await post(options, postData);
 		const buffer = await getBuffer(response);

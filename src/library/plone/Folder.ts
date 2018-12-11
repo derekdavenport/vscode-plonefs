@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { PloneObject, Document, File, LocalCss, Entry } from '.';
-import { post, getBuffer } from '../util';
+import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
+import { Cookie } from '../../PloneFS';
 
 type Listing = {
 	parent_url: string;
@@ -24,7 +25,6 @@ type Item = {
 };
 
 export default class Folder extends PloneObject {
-
 	entries: Map<string, Entry>;
 	isRoot: boolean;
 	hasLocalCSS: boolean;
@@ -38,7 +38,7 @@ export default class Folder extends PloneObject {
 		this.entries = new Map<string, Entry>();
 	}
 
-	load(cookie: string): Promise<boolean> {
+	load(cookie: Cookie): Promise<boolean> {
 		if (this.loading) {
 			return this.loadingPromise;
 		}
@@ -46,8 +46,9 @@ export default class Folder extends PloneObject {
 		return this.loadingPromise = this._load(cookie);
 	}
 
-	private async _load(cookie: string): Promise<boolean> {
+	private async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
+		this.isRoot ? this._loadRoot(cookie) : this._loadExternal(cookie);
 		if (this.hasLocalCSS) {
 			this.entries.set('local.css', new LocalCss(this.uri, true, this.isRoot));
 		}
@@ -57,11 +58,12 @@ export default class Folder extends PloneObject {
 			headers: { cookie },
 		};
 		const response = await post(options, {
-			rooted: 'True',
-			document_base_url: '/',
+			rooted: 'False',
+			document_base_url: 'https://' + this.uri.authority + this.uri.path + '/',
 		});
 		const buffer = await getBuffer(response);
 		const json: Listing = JSON.parse(buffer.toString());
+		this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
 		// json.path[0] // TODO: check if really root?
 		// json.upload_allowed // TODO: check this to know if can save?
 		for (const item of json.items) {
@@ -82,5 +84,23 @@ export default class Folder extends PloneObject {
 		}
 		this.loading = false;
 		return this.loaded = true;
+	}
+
+	private _loadRoot(cookie: Cookie): void {
+		// @@site-controlpanel
+	}
+
+	private async _loadExternal(cookie: Cookie) {
+		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
+		const response = await get({
+			host: this.uri.authority,
+			path: externalEditPath,
+			headers: { cookie },
+		});
+		if (response.statusCode !== 200) {
+			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
+		}
+		const buffer = await getBuffer(response);
+		this.parseExternalEdit(buffer);
 	}
 }

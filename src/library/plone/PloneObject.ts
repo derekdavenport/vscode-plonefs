@@ -1,10 +1,12 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post } from '../util';
+import { get, post, getBuffer } from '../util';
 import { RequestOptions } from 'https';
 
 export default abstract class PloneObject implements vscode.FileStat {
+	static readonly savedText = Buffer.from('saved');
+
 	type: vscode.FileType;
 	ctime: number;
 	mtime: number;
@@ -46,6 +48,28 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 		this.exists = exists;
 		this.settings = new Map<string, Buffer>();
+	}
+
+	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
+		if (!this.exists) {
+			throw vscode.FileSystemError.Unavailable('does not exist');
+		}
+		const setting = this.settings.get(settingName);
+		if (setting === undefined) {
+			throw vscode.FileSystemError.Unavailable('no setting ' + settingName);
+		}
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: this.uri.path + '/tinymce-save',
+			headers: { cookie },
+		};
+		const postData = {
+			fieldname: settingName,
+			text: setting.toString(), // TODO: support buffer?
+		};
+		const response = await post(options, postData);
+		const buffer = await getBuffer(response);
+		return buffer.equals(PloneObject.savedText);
 	}
 
 	async getNewSavePath(cookie: string) {
