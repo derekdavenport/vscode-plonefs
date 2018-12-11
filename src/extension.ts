@@ -5,8 +5,6 @@ import { Document, File, PloneObject } from './library/plone';
 const cookieStoreName = 'cookieStore';
 
 export async function activate(context: vscode.ExtensionContext) {
-	console.log('PloneFS says "Hello"', context.storagePath);
-
 	if (vscode.workspace.workspaceFolders !== undefined) {
 		let cookies: CookieStore = {};
 		for (const folder of vscode.workspace.workspaceFolders) {
@@ -46,19 +44,20 @@ export async function activate(context: vscode.ExtensionContext) {
 					});
 					if (newValue) {
 						stat.settings.set(settingName, Buffer.from(newValue));
-						// save
+						// TODO: consider moving cookie to PloneObject instance
+						stat.save(ploneFS.getCookie(uri));
 					}
 				}
 			}
 
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.setTitle',
-				uri => setSetting(uri, 'title')
+				uri => setSetting(uri, 'title'),
 			));
 
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.setDescription',
-				uri => setSetting(uri, 'description')
+				uri => setSetting(uri, 'description'),
 			));
 		}
 	}

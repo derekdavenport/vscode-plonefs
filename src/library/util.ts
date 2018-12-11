@@ -6,10 +6,14 @@ import * as mime from 'mime/lite';
 
 /**
  * helper function to use promise instead of setting a callback
- * @param options Request Options
+ * 
+ * @param options path will be escaped
  */
 export function get(options: https.RequestOptions) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
+		if (options.path) {
+			options.path = escapePath(options.path);
+		}
 		const request = https.get(options);
 		request.on('response', response => resolve(response));
 		request.on('error', error => reject(error));
@@ -27,7 +31,7 @@ export function getBuffer(response: http.IncomingMessage) {
 type FileType = {
 	filename: string,
 	data: Uint8Array,
-	contentType?: string
+	contentType?: string,
 };
 
 type ValueType = string | number | boolean;
@@ -67,8 +71,11 @@ function isFormData(data: FormData | MultipartData): data is FormData {
 // 	return Object.values(data).some(value => isFileType(value));
 // }
 
-// export async function post(options: https.RequestOptions, formData: FormData): Promise<http.IncomingMessage>;
-// export async function post(options: https.RequestOptions, formData: MultipartData): Promise<http.IncomingMessage>;
+/**
+ * 
+ * @param options path will be escaped, content-type and content-length set automatically
+ * @param formData 
+ */
 export function post(options: https.RequestOptions, formData: FormData | MultipartData): Promise<http.IncomingMessage> {
 	if (isFormData(formData)) {
 		return postFormData(options, formData);
@@ -90,6 +97,9 @@ export function postFormData(options: https.RequestOptions, formData: FormData) 
 				'Content-Length': formDataBuffer.length,
 			},
 		};
+		if (options.path) {
+			options.path = escapePath(options.path);
+		}
 		const request = https.request(options);
 		request.on('response', response => resolve(response));
 		request.on('error', error => reject(error));
@@ -109,8 +119,11 @@ export function postMultipartData(options: https.RequestOptions, multipartData: 
 				...options.headers,
 				'Content-Type': 'multipart/form-data; charset=utf-8; boundary=' + boundary,
 				// TODO: add "Content-Length": ??? plone doesn't require it, but other sites might if reuse this code
-			}
+			},
 		};
+		if (options.path) {
+			options.path = escapePath(options.path);
+		}
 		const request = https.request(options);
 		request.on('response', response => resolve(response));
 		request.on('error', error => reject(error));
@@ -155,6 +168,6 @@ export function postMultipartData(options: https.RequestOptions, multipartData: 
  * escape all illegal characters in path part of URL for node http/https packages
  * @param uriPath path to be escapped for node http/https packages
  */
-export function escapePath(uriPath: string): string {
+function escapePath(uriPath: string): string {
 	return uriPath.replace(/[\u0000-\u0020]/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 }

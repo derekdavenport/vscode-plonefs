@@ -1,13 +1,18 @@
 /*---------------------------------------------------------------------------------------------
- *  TODO: add license
+ * Copyright (c) 2018 Derek Davenport.
+ * this file is based on
+ * https://github.com/Microsoft/vscode-extension-samples/blob/master/fsprovider-sample/src/fileSystemProvider.ts
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License. See LICENSE in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post, escapePath } from './library/util';
+import { get, post } from './library/util';
 
 import { Folder, BaseFile, Document, File, Entry } from './library/plone';
+import { RequestOptions } from 'https';
 
 export type Credentials = {
 	username: string;
@@ -19,7 +24,6 @@ export type Cookie = string;
 export type CookieStore = {
 	[uri: string]: Cookie;
 };
-
 
 export default class PloneFS implements vscode.FileSystemProvider {
 	private cookieStore: CookieStore;
@@ -155,14 +159,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			throw vscode.FileSystemError.Unavailable('not implemented');
 		}
 
-
 		oldParent.entries.delete(entry.name);
 		entry.name = newName;
 		newParent.entries.set(newName, entry);
 
 		this._fireSoon(
 			{ type: vscode.FileChangeType.Deleted, uri: oldUri },
-			{ type: vscode.FileChangeType.Created, uri: newUri }
+			{ type: vscode.FileChangeType.Created, uri: newUri },
 		);
 	}
 
@@ -198,9 +201,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	static async login(uri: vscode.Uri, { username, password }: Credentials): Promise<string> {
-		const options = {
+		const options: RequestOptions = {
 			host: uri.authority,
-			path: escapePath(uri.path) + '/login_form',
+			path: uri.path + '/login_form',
 		};
 		const postData = {
 			__ac_name: username,
@@ -211,16 +214,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (!response.headers['set-cookie'] || !response.headers['set-cookie'][0].startsWith('__ac=')) {
 			throw vscode.FileSystemError.NoPermissions(uri);
 		}
-		return response.headers['set-cookie'][0];
+		return response.headers['set-cookie'][0].split(';')[0];
 	}
 
 	static async checkCookie(uri: vscode.Uri, cookie: Cookie): Promise<boolean> {
 		const response = await get({
 			host: uri.authority,
-			path: escapePath(uri.path) + '/edit',
-			headers: {
-				Cookie: cookie,
-			}
+			path: uri.path + '/edit',
+			headers: { cookie },
 		});
 		// should be 302 if cookie not accepted, 200 if accepted
 		return response.statusCode === 200;

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { get, getBuffer, post, escapePath } from '../util';
+import { get, getBuffer, post } from '../util';
 import { BaseFile } from '.';
+import { RequestOptions } from 'https';
 
 export default class File extends BaseFile {
 	language: string;
@@ -22,10 +23,8 @@ export default class File extends BaseFile {
 		const languagesPromise = vscode.languages.getLanguages();
 		const response = await get({
 			host: this.uri.authority,
-			path: escapePath(this.uri.path) + '/at_download/file',
-			headers: {
-				Cookie: cookie,
-			}
+			path: this.uri.path + '/at_download/file',
+			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
 			this.loading = false;
@@ -68,14 +67,12 @@ export default class File extends BaseFile {
 			file_file: {
 				filename: this.name,
 				data: this.data,
-			}
-		};
-		const options = {
-			host: this.uri.authority,
-			path: escapePath(savePath) + '/atct_edit',
-			headers: {
-				"Cookie": cookie,
 			},
+		};
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: savePath + '/atct_edit',
+			headers: { cookie },
 		};
 		const response = await post(options, postData);
 		if (response.statusCode !== 302) {

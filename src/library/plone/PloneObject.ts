@@ -1,7 +1,8 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post, escapePath } from '../util';
+import { get, post } from '../util';
+import { RequestOptions } from 'https';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	type: vscode.FileType;
@@ -48,14 +49,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 	}
 
 	async getNewSavePath(cookie: string) {
-		const options = {
+		const response = await get({
 			host: this.uri.authority,
-			path: escapePath(this.path.dir) + '/createObject?type_name=' + this.constructor.name,
-			headers: {
-				"Cookie": cookie,
-			},
-		};
-		const response = await get(options);
+			path: this.path.dir + '/createObject?type_name=' + this.constructor.name,
+			headers: { cookie },
+		});
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
@@ -129,12 +127,10 @@ export default abstract class PloneObject implements vscode.FileStat {
 	async save(cookie: string) {
 		// if doesn't exist, create
 		const savePath = this.exists ? this.uri.path : await this.getNewSavePath(cookie);
-		const options = {
+		const options: RequestOptions = {
 			host: this.uri.authority,
-			path: escapePath(savePath) + '/atct_edit',
-			headers: {
-				Cookie: cookie,
-			},
+			path: savePath + '/atct_edit',
+			headers: { cookie },
 		};
 		const postData = {
 			id: this.name,

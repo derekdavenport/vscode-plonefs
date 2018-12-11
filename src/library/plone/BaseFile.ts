@@ -1,7 +1,8 @@
 'use strict';
 import * as vscode from 'vscode';
 import { PloneObject } from ".";
-import { escapePath, post, getBuffer } from '../util';
+import { post, getBuffer } from '../util';
+import { RequestOptions } from 'https';
 
 export default abstract class BaseFile extends PloneObject {
 	data: Uint8Array;
@@ -18,16 +19,14 @@ export default abstract class BaseFile extends PloneObject {
 		if (!this.exists) {
 			return super.save(cookie);
 		}
-		const postData = {
-			fieldname: (this.constructor as typeof BaseFile)['fieldname'],
-			text: this.data.toString(), // TODO: support buffer
-		};
-		const options = {
+		const options: RequestOptions = {
 			host: this.uri.authority,
-			path: escapePath(this.uri.path) + '/tinymce-save',
-			headers: {
-				Cookie: cookie,
-			},
+			path: this.uri.path + '/tinymce-save',
+			headers: { cookie },
+		};
+		const postData = {
+			fieldname: (this.constructor as typeof BaseFile).fieldname,
+			text: this.data.toString(), // TODO: support buffer
 		};
 		const response = await post(options, postData);
 		const buffer = await getBuffer(response);

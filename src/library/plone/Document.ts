@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { get, getBuffer, escapePath } from '../util';
+import { get, getBuffer } from '../util';
 import { BaseFile } from '.';
 
 export default class Document extends BaseFile {
@@ -16,10 +16,8 @@ export default class Document extends BaseFile {
 		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
 		const response = await get({
 			host: this.uri.authority,
-			path: escapePath(externalEditPath),
-			headers: {
-				Cookie: cookie,
-			}
+			path: externalEditPath,
+			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);

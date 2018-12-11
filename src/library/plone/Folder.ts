@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { PloneObject, Document, File, LocalCss, Entry } from '.';
-import { post, getBuffer, escapePath } from '../util';
+import { post, getBuffer } from '../util';
+import { RequestOptions } from 'https';
 
 type Listing = {
 	parent_url: string;
@@ -26,10 +27,13 @@ export default class Folder extends PloneObject {
 
 	entries: Map<string, Entry>;
 	isRoot: boolean;
+	hasLocalCSS: boolean;
 
 	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
 		this.isRoot = isRoot;
+		// special feature for UofL localcss plugin
+		this.hasLocalCSS = uri.authority.endsWith('louisville.edu');
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 	}
@@ -44,13 +48,13 @@ export default class Folder extends PloneObject {
 
 	private async _load(cookie: string): Promise<boolean> {
 		this.loaded = false;
-		this.entries.set('local.css', new LocalCss(this.uri, true, this.isRoot));
-		const options = {
+		if (this.hasLocalCSS) {
+			this.entries.set('local.css', new LocalCss(this.uri, true, this.isRoot));
+		}
+		const options: RequestOptions = {
 			host: this.uri.authority,
-			path: escapePath(this.uri.path) + '/tinymce-jsonlinkablefolderlisting',
-			headers: {
-				'Cookie': cookie,
-			},
+			path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',
+			headers: { cookie },
 		};
 		const response = await post(options, {
 			rooted: 'True',
@@ -66,8 +70,10 @@ export default class Folder extends PloneObject {
 					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url), true));
 					break;
 				case 'document':
-				this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
-				this.entries.set(item.id + '.css', new LocalCss(vscode.Uri.parse(item.url), true));
+					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
+					if (this.hasLocalCSS) {
+						this.entries.set(item.id + '.css', new LocalCss(vscode.Uri.parse(item.url), true));
+					}
 					break;
 				case 'file':
 					this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));

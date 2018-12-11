@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { get, postMultipartData, getBuffer, escapePath } from '../util';
+import { get, postMultipartData, getBuffer } from '../util';
 import { BaseFile } from '.';
+import { RequestOptions } from 'https';
 
 export default class LocalCss extends BaseFile {
 	static readonly fieldname = 'localCss';
@@ -18,21 +19,22 @@ export default class LocalCss extends BaseFile {
 		return this.loadingPromise = this.forRoot ? this._loadRoot(cookie) : this._load(cookie);
 	}
 
+	save(cookie: string): Promise<boolean> {
+		return this.forRoot ? this._saveRoot(cookie) : super.save(cookie);
+	}
+
 	private async _load(cookie: string): Promise<boolean> {
 		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
 		const response = await get({
 			host: this.uri.authority,
-			path: escapePath(externalEditPath),
-			headers: {
-				Cookie: cookie,
-			},
+			path: externalEditPath,
+			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);
 		this.parseExternalEdit(buffer);
-		// TODO: change all settings to buffers?
 		this.data = this.settings.get('localCss') || Buffer.from('');
 		this.loading = false;
 		return this.loaded = true;
@@ -41,21 +43,19 @@ export default class LocalCss extends BaseFile {
 	private async _loadRoot(cookie: string): Promise<boolean> {
 		const response = await get({
 			host: this.uri.authority,
-			path: escapePath(this.uri.path),
-			headers: {
-				Cookie: cookie,
-			},
+			path: this.uri.path,
+			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);
-		const cssBuffer = this.getRootCss(buffer);
+		const cssBuffer = this._getRootCss(buffer);
 		this.data = cssBuffer;
 		return this.loaded = !(this.loading = false);
 	}
 
-	private getRootCss(buffer: Buffer) {
+	private _getRootCss(buffer: Buffer) {
 		const startBuffer = Buffer.from('/* Local CSS from site root */\n');
 		let startIndex = buffer.indexOf(startBuffer);
 		if (startIndex === -1) {
@@ -74,14 +74,11 @@ export default class LocalCss extends BaseFile {
 		return buffer.slice(startIndex, endIndex);
 	}
 
-	async save(cookie: string): Promise<boolean> {
-		if (!this.forRoot) {
-			return super.save(cookie);
-		}
-		const options = {
+	private async _saveRoot(cookie: string): Promise<boolean> {
+		const options: RequestOptions = {
 			host: this.uri.authority,
-			path: escapePath(this.uri.path) + '/@@localcss-settings',
-			Cookie: cookie.split(';')[0],
+			path: this.uri.path + '/@@localcss-settings',
+			headers: { cookie },
 		};
 		const formData = {
 			'form.widgets.site_local_css': this.data.toString(), // TODO: support Buffers
@@ -89,6 +86,6 @@ export default class LocalCss extends BaseFile {
 		};
 		const response = await postMultipartData(options, formData);
 		// TODO: errors also send 302, so check location to be same place posted to
-		return response.statusCode === 302; // && response.headers['location'] === ;
+		return response.statusCode === 302 && response.headers['location'] === this.uri.authority + this.uri.path;
 	}
 }
