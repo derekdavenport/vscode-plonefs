@@ -28,13 +28,18 @@
 				"category": "PloneFS"
 			},
 			{
-				"command": "plonefs.setTitle",
-				"title": "Set Title",
+				"command": "plonefs.editTitle",
+				"title": "Edit Title",
 				"category": "PloneFS"
 			},
 			{
-				"command": "plonefs.setDescription",
-				"title": "Set Description",
+				"command": "plonefs.editDescription",
+				"title": "Edit Description",
+				"category": "PloneFS"
+			},
+			{
+				"command": "plonefs.editLocalCss",
+				"title": "Edit Local CSS",
 				"category": "PloneFS"
 			}
 		],
@@ -42,13 +47,24 @@
 			"explorer/context": [
 				{
 					"when": "resourceScheme == plone",
-					"command": "plonefs.setTitle",
+					"command": "plonefs.editTitle",
 					"group": "PloneFS"
 				},
 				{
 					"when": "resourceScheme == plone",
-					"command": "plonefs.setDescription",
+					"command": "plonefs.editDescription",
 					"group": "PloneFS"
+				},
+				{
+					"when": "resourceScheme == plone",
+					"command": "plonefs.editLocalCss",
+					"group": "PloneFS"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "plonefs.editTitle",
+					"when": "workbenchState == workspace"
 				}
 			]
 		}

@@ -1,9 +1,14 @@
 import * as vscode from 'vscode';
 import { get, getBuffer } from '../util';
-import { BaseFile } from '.';
+import { BaseFile, LocalCss } from '.';
 
 export default class Document extends BaseFile {
 	static readonly fieldname = 'text';
+
+	constructor(uri: vscode.Uri, exists = false) {
+		super(uri, exists);
+		this.localCss = new LocalCss(this.uri);
+	}
 	load(cookie: string): Promise<boolean> {
 		if (this.loading) {
 			return this.loadingPromise;

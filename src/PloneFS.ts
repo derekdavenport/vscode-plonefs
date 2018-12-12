@@ -187,7 +187,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		// let basename = path.posix.basename(uri.path);
 		let dirname = uri.with({ path: path.posix.dirname(uri.path) });
 		let parent = await this._lookupAsFolder(dirname, false);
-		// check if exists
+		// TODO: check if exists
 
 		let entry = new Folder(uri);
 		const saved = await entry.save(this.getCookie(uri));
@@ -211,10 +211,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			'form.submitted': 1,
 		};
 		const response = await post(options, postData);
-		if (!response.headers['set-cookie'] || !response.headers['set-cookie'][0].startsWith('__ac=')) {
-			throw vscode.FileSystemError.NoPermissions(uri);
+		const cookieHeaders = response.headers['set-cookie'];
+		if (cookieHeaders) {
+			const cookieHeader = cookieHeaders[0];
+			if (cookieHeader && cookieHeader.startsWith('__ac=')) {
+				return cookieHeader.split(';')[0];
+			}
 		}
-		return response.headers['set-cookie'][0].split(';')[0];
+		throw vscode.FileSystemError.NoPermissions(uri);
 	}
 
 	static async checkCookie(uri: vscode.Uri, cookie: Cookie): Promise<boolean> {
@@ -254,6 +258,10 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				}
 			}
 			entry = child;
+		}
+		switch (uri.query) {
+			case 'local.css':
+				return entry.localCss;
 		}
 		return entry;
 	}

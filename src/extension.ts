@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore, Cookie } from './PloneFS';
-import { Document, File, PloneObject } from './library/plone';
+import { Document, File, PloneObject, LocalCss } from './library/plone';
 const cookieStoreName = 'cookieStore';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -31,6 +31,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					else if (stat instanceof File && stat.language && stat.language !== 'plaintext') {
 						vscode.languages.setTextDocumentLanguage(doc, stat.language);
 					}
+					else if (stat instanceof LocalCss) {
+						vscode.languages.setTextDocumentLanguage(doc, 'css');
+					}
 				}
 			}));
 
@@ -45,10 +48,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					const oldBuffer = stat.settings.get(settingName);
 					const newValue = await vscode.window.showInputBox({
 						prompt: 'Set ' + settingName,
-						value: oldBuffer && oldBuffer.toString().replace(/\n/g, '\\n'),
+						value: oldBuffer!.toString().replace(/\r\n/g, '\\n'),
 					});
 					if (newValue) {
-						stat.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\n')));
+						stat.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
 						// TODO: consider moving cookie to PloneObject instance
 						if (!cookie) {
 							cookie = ploneFS.getCookie(uri);
@@ -59,13 +62,21 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 
 			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.setTitle',
+				'plonefs.editTitle',
 				uri => setSetting(uri, 'title'),
 			));
 
 			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.setDescription',
+				'plonefs.editDescription',
 				uri => setSetting(uri, 'description'),
+			));
+
+			context.subscriptions.push(vscode.commands.registerCommand(
+				'plonefs.editLocalCss',
+				async (uri: vscode.Uri) => {
+					// TODO: this only supports folders for now
+					console.log(await vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css' })));
+				},
 			));
 		}
 	}

@@ -27,13 +27,14 @@ type Item = {
 export default class Folder extends PloneObject {
 	entries: Map<string, Entry>;
 	isRoot: boolean;
-	hasLocalCSS: boolean;
 
 	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
 		this.isRoot = isRoot;
 		// special feature for UofL localcss plugin
-		this.hasLocalCSS = uri.authority.endsWith('louisville.edu');
+		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
+		// TODO: test
+		this.localCss = new LocalCss(uri, isRoot);
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 	}
@@ -49,8 +50,8 @@ export default class Folder extends PloneObject {
 	private async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
 		this.isRoot ? this._loadRoot(cookie) : this._loadExternal(cookie);
-		if (this.hasLocalCSS) {
-			this.entries.set('local.css', new LocalCss(this.uri, true, this.isRoot));
+		if (this.hasLocalCss) {
+			this.entries.set('local.css', this.localCss!);
 		}
 		const options: RequestOptions = {
 			host: this.uri.authority,
@@ -63,7 +64,7 @@ export default class Folder extends PloneObject {
 		});
 		const buffer = await getBuffer(response);
 		const json: Listing = JSON.parse(buffer.toString());
-		this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
+		//this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
 		// json.path[0] // TODO: check if really root?
 		// json.upload_allowed // TODO: check this to know if can save?
 		for (const item of json.items) {
@@ -73,9 +74,6 @@ export default class Folder extends PloneObject {
 					break;
 				case 'document':
 					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
-					if (this.hasLocalCSS) {
-						this.entries.set(item.id + '.css', new LocalCss(vscode.Uri.parse(item.url), true));
-					}
 					break;
 				case 'file':
 					this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));
@@ -87,7 +85,13 @@ export default class Folder extends PloneObject {
 	}
 
 	private _loadRoot(cookie: Cookie): void {
-		// @@site-controlpanel
+		return;
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: this.uri.path + '/@@site-controlpanel',
+			headers: { cookie },
+		};
+		get(options);
 	}
 
 	private async _loadExternal(cookie: Cookie) {

@@ -1,8 +1,32 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post, getBuffer } from '../util';
+import { get, post, getBuffer, postMultipartData } from '../util';
 import { RequestOptions } from 'https';
+import { LocalCss } from '.';
+
+enum Mode {
+	Header,
+	Python,
+	Content,
+}
+const linefeed = 10; // '\n'
+const creturn = 13; // '\r'
+const colon = 58; // ':'
+const indent = '  ';
+// between every line in multiline values
+const blankLine = '  \r\n  ';
+// except these keys
+const singleLineKeys = ['locallyAllowedTypes', 'immediatelyAddableTypes'];
+const endOfLineSequences = {
+	[Mode.Header]: Buffer.from([linefeed]),
+	[Mode.Python]: Buffer.from([creturn, linefeed]),
+};
+// between key and value
+const valueStartOffsets = {
+	[Mode.Header]: 1, // ':'
+	[Mode.Python]: 2, // ': '
+};
 
 export default abstract class PloneObject implements vscode.FileStat {
 	static readonly savedText = Buffer.from('saved');
@@ -34,6 +58,8 @@ export default abstract class PloneObject implements vscode.FileStat {
 	exists: boolean;
 
 	settings: Map<string, Buffer>;
+	hasLocalCss = false;
+	localCss: LocalCss | undefined;
 
 	constructor(uri: vscode.Uri, exists = false) {
 		this.type = vscode.FileType.Unknown;
@@ -67,7 +93,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 			fieldname: settingName,
 			text: setting.toString(), // TODO: support buffer?
 		};
-		const response = await post(options, postData);
+		const response = await postMultipartData(options, postData);
 		const buffer = await getBuffer(response);
 		return buffer.equals(PloneObject.savedText);
 	}
@@ -94,58 +120,46 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	protected parseExternalEdit(buffer: Buffer): Buffer {
 		this.settings.clear();
+		const modeSwitch = Buffer.from([linefeed, linefeed]);
+		const headerStartIndex = 0;
+		const headerEndIndex = buffer.indexOf(modeSwitch);
+		const pythonStartIndex = headerEndIndex + modeSwitch.length;
+		const pythonEndIndex = buffer.lastIndexOf(modeSwitch);
+		const contentStartIndex = pythonEndIndex + modeSwitch.length;
+		const headerBuffer = buffer.slice(headerStartIndex, headerEndIndex);
+		const pythonBuffer = buffer.slice(pythonStartIndex, pythonEndIndex);
+		const contentBuffer = buffer.slice(contentStartIndex);
+		this.parseExternalEditSection(headerBuffer, Mode.Header);
+		this.parseExternalEditSection(pythonBuffer, Mode.Python);
+		return contentBuffer;
+	}
+
+	private parseExternalEditSection(buffer: Buffer, mode: Mode.Header | Mode.Python) {
 		let lineStart: number, lineEnd: number, nextLineStart = 0;
 		let key: string | undefined, value: Buffer;
-		enum Mode {
-			Header,
-			Python,
-			Content,
-		}
-		const newline = '\n'.charCodeAt(0);
-		const creturn = '\r'.charCodeAt(0);
-		const colon = ':'.charCodeAt(0);
-		const space = ' '.charCodeAt(0);
-		// Header uses ':', Python uses ': '
-		const valueStartOffsets = {
-			[Mode.Header]: ':'.length,
-			[Mode.Python]: ': '.length,
-		};
-		let mode: Mode = Mode.Header;
-		while (mode !== Mode.Content && (lineEnd = buffer.indexOf(newline, nextLineStart)) !== -1) {
+		const eol = endOfLineSequences[mode];
+		const valueStartOffset = valueStartOffsets[mode];
+		while (nextLineStart < buffer.length) {
+			lineEnd = buffer.indexOf(eol, nextLineStart);
+			if (lineEnd === -1) {
+				lineEnd = buffer.length;
+			}
 			lineStart = nextLineStart;
-			nextLineStart = lineEnd + 1;
-			// backtrack 1 if \r\n used
-			if (buffer[lineEnd - 1] === creturn) {
-				lineEnd--;
+			nextLineStart = lineEnd + eol.length;
+			let colonIndex = buffer.indexOf(colon, lineStart);
+			key = buffer.slice(lineStart, colonIndex).toString();
+			value = buffer.slice(colonIndex + valueStartOffset, lineEnd);
+			// these keys don't insert blank lines between lines of multiline values
+			const nextLineStartOffset = singleLineKeys.includes(key) ? indent.length : blankLine.length
+			// check for multiline value
+			while (buffer.indexOf(indent, nextLineStart) === nextLineStart) {
+				lineStart = nextLineStart + nextLineStartOffset;
+				lineEnd = buffer.indexOf(eol, lineStart);
+				nextLineStart = lineEnd + eol.length;
+				value = Buffer.concat([value, eol, buffer.slice(lineStart, lineEnd)]);
 			}
-			// blank line signals format change
-			if (lineStart === lineEnd) {
-				switch (mode) {
-					case Mode.Header:
-						mode = Mode.Python;
-						break;
-					case Mode.Python:
-						mode = Mode.Content;
-						break;
-				}
-			}
-			else {
-				let colonIndex = buffer.indexOf(colon, lineStart);
-				key = buffer.slice(lineStart, colonIndex).toString();
-				value = buffer.slice(colonIndex + valueStartOffsets[mode], lineEnd);
-				// check for multiline value
-				while (buffer[nextLineStart] === space) {
-					// TODO: locallyAllowedTypes does not have extra blank line
-					lineStart = nextLineStart + '  \r\n  '.length;
-					// this section should always use \r\n
-					lineEnd = buffer.indexOf(creturn, lineStart);
-					nextLineStart = lineEnd + '\r\n'.length;
-					value = Buffer.concat([value, Buffer.from('\n'), buffer.slice(lineStart, lineEnd)]);
-				}
-				this.settings.set(key, value);
-			}
+			this.settings.set(key, value);
 		}
-		return buffer.slice(nextLineStart);
 	}
 
 	async save(cookie: string) {
