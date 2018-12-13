@@ -36,8 +36,6 @@ type FileType = {
 
 type ValueType = string | number | boolean;
 
-// TODO: this is wrong because forms don't have unique keys
-// need to accept and handle arrays
 export type FormData = {
 	[name: string]: ValueType | ValueType[];
 };

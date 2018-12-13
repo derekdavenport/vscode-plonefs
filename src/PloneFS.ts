@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { get, post } from './library/util';
 
-import { Folder, BaseFile, Document, File, Entry } from './library/plone';
+import { Folder, BaseFile, Document, File, Entry, LocalCss } from './library/plone';
 import { RequestOptions } from 'https';
 
 export type Credentials = {
@@ -42,9 +42,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			parent.loaded = true;
 			for (const part of parts) {
 				const parentPath = parent.uri.path;
-				const myPath = path.posix.resolve(parentPath, part);
-				const myUri = parent.uri.with({ path: myPath });
-				const folder = new Folder(myUri);
+				const folderPath = path.posix.resolve(parentPath, part);
+				const folderUri = parent.uri.with({ path: folderPath });
+				const folder = new Folder(folderUri);
 				folder.loaded = true;
 				parent.entries.set(part, folder);
 				parent = folder;
@@ -74,7 +74,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	// --- manage file metadata
 
-	async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
+	stat(uri: vscode.Uri): Promise<Entry> {
 		return this._lookup(uri, false);
 	}
 
@@ -84,6 +84,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (!loaded) {
 			throw vscode.FileSystemError.Unavailable('could not load');
 		}
+		// return Array.from(entry.entries).map(([name, child]) => [name, child.type] as [string, vscode.FileType]);
 		let result: [string, vscode.FileType][] = [];
 		for (const [name, child] of entry.entries) {
 			result.push([name, child.type]);
@@ -104,12 +105,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
-		let basename = path.posix.basename(uri.path);
-		let parent = await this._lookupParentFolder(uri);
-		let entry = parent.entries.get(basename);
-		if (entry instanceof Folder) {
-			throw vscode.FileSystemError.FileIsADirectory(uri);
-		}
+		let entry = await this._lookupAsFile(uri, false);
 		if (!entry && !options.create) {
 			throw vscode.FileSystemError.FileNotFound(uri);
 		}
@@ -117,6 +113,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			throw vscode.FileSystemError.FileExists(uri);
 		}
 		if (!entry) {
+			let basename = path.posix.basename(uri.path);
+			let parent = await this._lookupParentFolder(uri);
 			// files will have an extension
 			const extname = path.posix.extname(uri.path);
 			entry = extname ? new File(uri) : new Document(uri);
@@ -139,7 +137,6 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	// --- manage files/directories
 
 	async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }) {
-
 		if (!options.overwrite && await this._lookup(newUri, true)) {
 			throw vscode.FileSystemError.FileExists(newUri);
 		}
@@ -184,11 +181,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async createDirectory(uri: vscode.Uri): Promise<void> {
-		// let basename = path.posix.basename(uri.path);
-		let dirname = uri.with({ path: path.posix.dirname(uri.path) });
+		let basename = path.posix.basename(uri.path);
+		let dirname = uri.with({ path: path.posix.dirname(uri.path), query: '' });
 		let parent = await this._lookupAsFolder(dirname, false);
-		// TODO: check if exists
 
+		if (parent.entries.has(basename)) {
+			throw vscode.FileSystemError.FileExists(uri);
+		}
 		let entry = new Folder(uri);
 		const saved = await entry.save(this.getCookie(uri));
 		if (!saved) {
@@ -236,6 +235,11 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	private async _lookup(uri: vscode.Uri, silent: false): Promise<Entry>;
 	private async _lookup(uri: vscode.Uri, silent: boolean): Promise<Entry | undefined>;
 	private async _lookup(uri: vscode.Uri, silent: boolean): Promise<Entry | undefined> {
+		let returnLocalCss = false;
+		if (uri.query === 'localCss' && /[/.]local\.css/.test(uri.path)) {
+			uri = uri.with({ path: uri.path.slice(0, -10), query: '' });
+			returnLocalCss = true;
+		}
 		let parts = uri.path.split('/').slice(1);
 		let entry: Entry = this.roots[uri.authority];
 		for (const part of parts) {
@@ -259,9 +263,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			}
 			entry = child;
 		}
-		switch (uri.query) {
-			case 'local.css':
-				return entry.localCss;
+		if (returnLocalCss) {
+			return entry.localCss;
 		}
 		return entry;
 	}
@@ -283,7 +286,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	private async _lookupParentFolder(uri: vscode.Uri): Promise<Folder> {
-		const dirname = uri.with({ path: path.posix.dirname(uri.path) });
+		const dirname = uri.with({ path: path.posix.dirname(uri.path), query: '' });
 		return await this._lookupAsFolder(dirname, false);
 	}
 

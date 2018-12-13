@@ -6,8 +6,14 @@ import { RequestOptions } from 'https';
 export default class LocalCss extends BaseFile {
 	static readonly fieldname = 'localCss';
 	forRoot: boolean;
-	constructor(uri: vscode.Uri, exists = false, forRoot = false) {
-		super(uri, exists);
+
+	/**
+	 * 
+	 * @param uri 
+	 * @param forRoot set true if this LocalCss belongs to the site root folder
+	 */
+	constructor(uri: vscode.Uri, forRoot = false) {
+		super(uri, true);
 		this.forRoot = forRoot;
 	}
 
@@ -85,7 +91,7 @@ export default class LocalCss extends BaseFile {
 			'form.buttons.save': 'Save',
 		};
 		const response = await postMultipartData(options, formData);
-		// TODO: errors also send 302, so check location to be same place posted to
+		// errors also send 302, so check location to be same place posted to
 		return response.statusCode === 302 && response.headers['location'] === this.uri.authority + this.uri.path;
 	}
 }

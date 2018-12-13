@@ -33,8 +33,9 @@ export default class Folder extends PloneObject {
 		this.isRoot = isRoot;
 		// special feature for UofL localcss plugin
 		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
-		// TODO: test
-		this.localCss = new LocalCss(uri, isRoot);
+		if (this.hasLocalCss) {
+			this.localCss = new LocalCss(uri, isRoot);
+		}
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 	}
@@ -50,9 +51,6 @@ export default class Folder extends PloneObject {
 	private async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
 		this.isRoot ? this._loadRoot(cookie) : this._loadExternal(cookie);
-		if (this.hasLocalCss) {
-			this.entries.set('local.css', this.localCss!);
-		}
 		const options: RequestOptions = {
 			host: this.uri.authority,
 			path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',

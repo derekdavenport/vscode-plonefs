@@ -7,7 +7,11 @@ export default class Document extends BaseFile {
 
 	constructor(uri: vscode.Uri, exists = false) {
 		super(uri, exists);
-		this.localCss = new LocalCss(this.uri);
+		// special feature for UofL localcss plugin
+		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
+		if (this.hasLocalCss) {
+			this.localCss = new LocalCss(uri);
+		}
 	}
 	load(cookie: string): Promise<boolean> {
 		if (this.loading) {
