@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { get, post } from './library/util';
 
-import { Folder, BaseFile, Document, File, Entry, LocalCss } from './library/plone';
+import { Folder, BaseFile, Document, File, Entry } from './library/plone';
 import { RequestOptions } from 'https';
 
 export type Credentials = {
@@ -105,7 +105,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
-		let entry = await this._lookupAsFile(uri, false);
+		let entry = await this._lookupAsFile(uri, true);
 		if (!entry && !options.create) {
 			throw vscode.FileSystemError.FileNotFound(uri);
 		}
@@ -269,17 +269,21 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return entry;
 	}
 
-	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder> {
+	private async _lookupAsFolder(uri: vscode.Uri, silent: false): Promise<Folder>;
+	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder | undefined>;
+	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder | undefined> {
 		const entry = await this._lookup(uri, silent);
-		if (!(entry instanceof Folder)) {
+		if (entry instanceof BaseFile) {
 			throw vscode.FileSystemError.FileNotADirectory(uri);
 		}
 		return entry;
 	}
 
-	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile> {
+	private async _lookupAsFile(uri: vscode.Uri, silent: false): Promise<BaseFile>;
+	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined>;
+	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined> {
 		const entry = await this._lookup(uri, silent);
-		if (!(entry instanceof BaseFile)) {
+		if (entry instanceof Folder) {
 			throw vscode.FileSystemError.FileIsADirectory(uri);
 		}
 		return entry;

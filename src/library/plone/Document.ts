@@ -29,6 +29,7 @@ export default class Document extends BaseFile {
 			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
+			this.loading = false;
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);

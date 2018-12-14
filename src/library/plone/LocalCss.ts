@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { get, postMultipartData, getBuffer } from '../util';
+import { get, getBuffer, post } from '../util';
 import { BaseFile } from '.';
 import { RequestOptions } from 'https';
 
@@ -37,6 +37,7 @@ export default class LocalCss extends BaseFile {
 			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
+			this.loading = false;
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);
@@ -49,10 +50,11 @@ export default class LocalCss extends BaseFile {
 	private async _loadRoot(cookie: string): Promise<boolean> {
 		const response = await get({
 			host: this.uri.authority,
-			path: this.uri.path,
+			path: this.uri.path + '/@@localcss-settings',
 			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
+			this.loading = false;
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);
@@ -62,18 +64,15 @@ export default class LocalCss extends BaseFile {
 	}
 
 	private _getRootCss(buffer: Buffer) {
+		// TODO: this won't work if block local css is turned on
 		const startBuffer = Buffer.from('/* Local CSS from site root */\n');
 		let startIndex = buffer.indexOf(startBuffer);
 		if (startIndex === -1) {
-			throw vscode.FileSystemError.Unavailable('no local css found');
+			Buffer.from('');
 		}
 		startIndex += startBuffer.length;
-		const endLocalBuffer = Buffer.from('\n/* Local CSS from /front-page */');
-		const endTagBuffer = Buffer.from('\n</style>');
-		let endIndex = buffer.indexOf(endLocalBuffer, startIndex);
-		if (endIndex === -1) {
-			endIndex = buffer.indexOf(endTagBuffer, startIndex);
-		}
+		const endBuffer = Buffer.from('\n</style>');
+		let endIndex = buffer.indexOf(endBuffer, startIndex);
 		if (endIndex === -1) {
 			throw vscode.FileSystemError.Unavailable('could not find end of local css');
 		}
@@ -90,7 +89,7 @@ export default class LocalCss extends BaseFile {
 			'form.widgets.site_local_css': this.data.toString(), // TODO: support Buffers
 			'form.buttons.save': 'Save',
 		};
-		const response = await postMultipartData(options, formData);
+		const response = await post(options, formData);
 		// errors also send 302, so check location to be same place posted to
 		return response.statusCode === 302 && response.headers['location'] === this.uri.authority + this.uri.path;
 	}

@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post, getBuffer, postMultipartData } from '../util';
+import { get, post, getBuffer } from '../util';
 import { RequestOptions } from 'https';
 import { LocalCss } from '.';
 
@@ -53,6 +53,8 @@ export default abstract class PloneObject implements vscode.FileStat {
 	loading: boolean;
 	loaded: boolean;
 	loadingPromise: Promise<boolean>;
+	// TODO: write load here that handles setting loading (false when fail) and return promise
+	// abstract protected _load 
 	abstract load(cookie: string): Promise<boolean>;
 
 	exists: boolean;
@@ -93,7 +95,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 			fieldname: settingName,
 			text: setting.toString(), // TODO: support buffer?
 		};
-		const response = await postMultipartData(options, postData);
+		const response = await post(options, postData);
 		const buffer = await getBuffer(response);
 		return buffer.equals(PloneObject.savedText);
 	}

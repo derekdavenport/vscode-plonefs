@@ -18,3 +18,11 @@ declare module 'mime/lite' {
 	 */
 	export function define(typeMap: { [type: string]: string[]; }, force?: boolean): void;
 }
+
+declare module 'ssl-root-cas' {
+	export class RootCas extends Array<string> {
+		rootCas: RootCas;
+		addFile(filepath: string): RootCas;
+	}
+	export function create(): RootCas;
+}

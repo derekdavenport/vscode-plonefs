@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore, Cookie } from './PloneFS';
 import { Document, File, PloneObject, LocalCss, Folder } from './library/plone';
+
 const cookieStoreName = 'cookieStore';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -11,7 +12,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (folder.uri.scheme === 'plone') {
 				const cookie = await login(folder.uri);
 				if (cookie === undefined) {
-					throw vscode.FileSystemError.NoPermissions('Unable to open site: login cancelled');
+					vscode.window.showErrorMessage('Unable to open site: login cancelled');
+					return;
 				}
 				cookies[getSiteName(folder.uri)] = cookie;
 			}
@@ -72,24 +74,22 @@ export async function activate(context: vscode.ExtensionContext) {
 			));
 
 			// special feature for UofL localcss plugin
-			if (Object.keys(cookies).some(siteName => /^[^/]*louisville.edu/.test(siteName))) {
-				context.subscriptions.push(vscode.commands.registerCommand(
-					'plonefs.editLocalCss',
-					async (uri: vscode.Uri) => {
-						const entry = await ploneFS.stat(uri);
-						// I don't know of a way to make the context menu option not show up on some items
-						if (!entry.hasLocalCss) {
-							vscode.window.showErrorMessage('no local css');
-						}
-						else if (entry instanceof Folder) {
-							vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
-						}
-						else if (entry instanceof Document) {
-							vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
-						}
-					},
-				));
-			}
+			context.subscriptions.push(vscode.commands.registerCommand(
+				'plonefs.editLocalCss',
+				async (uri: vscode.Uri) => {
+					const entry = await ploneFS.stat(uri);
+					// I don't know of a way to make the context menu option not show up on some items
+					if (!entry.hasLocalCss) {
+						vscode.window.showErrorMessage('no local css');
+					}
+					else if (entry instanceof Folder) {
+						vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
+					}
+					else if (entry instanceof Document) {
+						vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
+					}
+				},
+			));
 		}
 	}
 

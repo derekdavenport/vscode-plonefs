@@ -26,7 +26,16 @@ type Item = {
 
 export default class Folder extends PloneObject {
 	entries: Map<string, Entry>;
-	isRoot: boolean;
+	private _isRoot!: boolean;
+	get isRoot() {
+		return this._isRoot;
+	}
+	set isRoot(isRoot: boolean) {
+		this._isRoot = isRoot;
+		if (this.localCss) {
+			this.localCss.forRoot = isRoot;
+		}
+	}
 
 	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
@@ -38,6 +47,21 @@ export default class Folder extends PloneObject {
 		}
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
+	}
+
+	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
+		if (!this.isRoot) {
+			return super.saveSetting(settingName, cookie);
+		}
+		throw vscode.FileSystemError.Unavailable('cannot edit root folder');
+		// TODO: title and description at the root require an authenticator
+		// not worth the trouble right now
+		// switch (settingName) {
+		// 	case 'title':
+		// 		break;
+		// 	case 'description':
+		// 		break;
+		// }
 	}
 
 	load(cookie: Cookie): Promise<boolean> {
@@ -100,6 +124,7 @@ export default class Folder extends PloneObject {
 			headers: { cookie },
 		});
 		if (response.statusCode !== 200) {
+			this.loading = false;
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		const buffer = await getBuffer(response);

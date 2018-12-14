@@ -3,6 +3,15 @@ import * as http from 'http';
 import * as https from 'https';
 import * as querystring from 'querystring';
 import * as mime from 'mime/lite';
+import * as src from 'ssl-root-cas';
+
+// add missing intermediate cert for stage.louisville.edu
+const rootCas = src.create();
+rootCas.addFile(__dirname + '/../../ssl/globalsign-org.cer');
+https.globalAgent.options.ca = rootCas;
+
+// will work with all https requests will all libraries (i.e. request.js)
+//require('https').globalAgent.options.ca = rootCas;
 
 /**
  * helper function to use promise instead of setting a callback
