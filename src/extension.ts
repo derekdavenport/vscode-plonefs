@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore, Cookie } from './PloneFS';
-import { Document, File, PloneObject, LocalCss, Folder } from './library/plone';
+import { Document, File, PloneObject, LocalCss, Folder, Entry } from './library/plone';
 
 const cookieStoreName = 'cookieStore';
 
@@ -39,56 +39,83 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}));
 
-			async function setSetting(uri: vscode.Uri, settingName: string) {
-				const stat = await ploneFS.stat(uri);
-				if (stat instanceof PloneObject) {
+			async function setSetting(entry: Entry, settingName: string) {
+				if (entry instanceof PloneObject) {
 					let cookie: Cookie | undefined;
-					if (!stat.loaded) {
-						cookie = ploneFS.getCookie(uri);
-						await stat.load(cookie);
+					if (!entry.loaded) {
+						cookie = ploneFS.getCookie(entry.uri);
+						await entry.load(cookie);
 					}
-					const oldBuffer = stat.settings.get(settingName);
+					const oldBuffer = entry.settings.get(settingName);
+					if (!oldBuffer) {
+						vscode.window.showErrorMessage('Unable to load ' + settingName);
+						throw vscode.FileSystemError.Unavailable('Unable to load ' + settingName);
+					}
 					const newValue = await vscode.window.showInputBox({
 						prompt: 'Set ' + settingName,
-						value: oldBuffer!.toString().replace(/\r\n/g, '\\n'),
+						// currently vscode only allows single-line input
+						value: oldBuffer.toString().replace(/\r\n/g, '\\n'),
+						ignoreFocusOut: true,
 					});
-					if (newValue) {
-						stat.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
-						// TODO: consider moving cookie to PloneObject instance
-						if (!cookie) {
-							cookie = ploneFS.getCookie(uri);
-						}
-						stat.saveSetting(settingName, cookie);
+					// cancelled
+					if (newValue === undefined) {
+						return;
 					}
+					// convert single-line input to multi-line
+					entry.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
+					// TODO: consider moving cookie to PloneObject instance
+					if (!cookie) {
+						cookie = ploneFS.getCookie(entry.uri);
+					}
+					entry.saveSetting(settingName, cookie);
+
+				}
+			}
+
+			async function settingsMenu(uri: vscode.Uri): Promise<void> {
+				enum Picks {
+					title = 'Edit Title',
+					description = 'Edit Description',
+					localCSS = 'Edit Local CSS',
+				};
+				let items: Picks[] = [Picks.title, Picks.description];
+				const entry = await ploneFS.stat(uri);
+				if (entry.hasLocalCss) {
+					items.push(Picks.localCSS);
+				}
+				const pick = await vscode.window.showQuickPick(items, {
+					placeHolder: 'More Plone Options',
+					canPickMany: false,
+					ignoreFocusOut: true,
+				}) as Picks | undefined;
+				// cancelled
+				if (pick === undefined) {
+					return;
+				}
+				switch (pick) {
+					case Picks.title:
+						setSetting(entry, 'title');
+						break;
+					case Picks.description:
+						setSetting(entry, 'description');
+						break;
+					case Picks.localCSS:
+						if (entry instanceof Folder) {
+							vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
+						}
+						else if (entry instanceof Document) {
+							vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
+						}
+						break;
+					default:
+						const never: never = pick;
+						throw new Error('unexpected Plone setting: ' + never);
 				}
 			}
 
 			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.editTitle',
-				uri => setSetting(uri, 'title'),
-			));
-
-			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.editDescription',
-				uri => setSetting(uri, 'description'),
-			));
-
-			// special feature for UofL localcss plugin
-			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.editLocalCss',
-				async (uri: vscode.Uri) => {
-					const entry = await ploneFS.stat(uri);
-					// I don't know of a way to make the context menu option not show up on some items
-					if (!entry.hasLocalCss) {
-						vscode.window.showErrorMessage('no local css');
-					}
-					else if (entry instanceof Folder) {
-						vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
-					}
-					else if (entry instanceof Document) {
-						vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
-					}
-				},
+				'plonefs.editSettings',
+				(uri: vscode.Uri) => settingsMenu(uri),
 			));
 		}
 	}
@@ -113,6 +140,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			username = await vscode.window.showInputBox({
 				prompt: 'Username for ' + siteName,
 				value: username,
+				ignoreFocusOut: true,
 			});
 			// cancelled
 			if (username === undefined) {
@@ -122,6 +150,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				prompt: 'Password for ' + siteName,
 				value: password,
 				password: true,
+				ignoreFocusOut: true,
 			});
 			// cancelled
 			if (password === undefined) {
@@ -147,6 +176,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				canPickMany: false,
+				ignoreFocusOut: true,
 			});
 			// cancelled
 			if (pick === undefined) {

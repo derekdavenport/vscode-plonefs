@@ -80,9 +80,10 @@ export default class LocalCss extends BaseFile {
 	}
 
 	private async _saveRoot(cookie: string): Promise<boolean> {
+		const postPath = this.uri.path + '/@@localcss-settings';
 		const options: RequestOptions = {
 			host: this.uri.authority,
-			path: this.uri.path + '/@@localcss-settings',
+			path: postPath,
 			headers: { cookie },
 		};
 		const formData = {
@@ -90,7 +91,9 @@ export default class LocalCss extends BaseFile {
 			'form.buttons.save': 'Save',
 		};
 		const response = await post(options, formData);
+		const codeOK = response.statusCode === 302;
 		// errors also send 302, so check location to be same place posted to
-		return response.statusCode === 302 && response.headers['location'] === this.uri.authority + this.uri.path;
+		const locationOK = response.headers['location'] === 'https://' + this.uri.authority + postPath;
+		return codeOK && locationOK;
 	}
 }

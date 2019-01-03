@@ -26,6 +26,9 @@ type Item = {
 
 export default class Folder extends PloneObject {
 	entries: Map<string, Entry>;
+	loadingEntries: boolean;
+	loadingEntriesPromise: Promise<boolean>;
+	loadedEntries: boolean;
 	private _isRoot!: boolean;
 	get isRoot() {
 		return this._isRoot;
@@ -39,6 +42,11 @@ export default class Folder extends PloneObject {
 
 	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
+
+		this.loadingEntries = false;
+		this.loadedEntries = false;
+		this.loadingEntriesPromise = Promise.resolve(false);
+
 		this.isRoot = isRoot;
 		// special feature for UofL localcss plugin
 		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
@@ -72,9 +80,49 @@ export default class Folder extends PloneObject {
 		return this.loadingPromise = this._load(cookie);
 	}
 
+	loadEntries(cookie: Cookie): Promise<boolean> {
+		if (this.loadingEntries) {
+			return this.loadingEntriesPromise;
+		}
+		this.loadingEntries = true;
+		return this.loadingEntriesPromise = this._loadEntries(cookie);
+	}
+
 	private async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
-		this.isRoot ? this._loadRoot(cookie) : this._loadExternal(cookie);
+		this.isRoot ? await this._loadRoot(cookie) : await this._loadExternal(cookie);
+		this.loading = false;
+		return this.loaded = true;
+	}
+
+	private _loadRoot(cookie: Cookie): boolean {
+		throw vscode.FileSystemError.Unavailable('loading root folder not implemented');
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: this.uri.path + '/@@site-controlpanel',
+			headers: { cookie },
+		};
+		get(options);
+	}
+
+	private async _loadExternal(cookie: Cookie): Promise<boolean> {
+		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
+		const response = await get({
+			host: this.uri.authority,
+			path: externalEditPath,
+			headers: { cookie },
+		});
+		if (response.statusCode !== 200) {
+			this.loading = false;
+			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
+		}
+		const buffer = await getBuffer(response);
+		this.parseExternalEdit(buffer);
+		return true;
+	}
+
+	private async _loadEntries(cookie: Cookie): Promise<boolean> {
+		this.loadedEntries = false;
 		const options: RequestOptions = {
 			host: this.uri.authority,
 			path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',
@@ -102,32 +150,7 @@ export default class Folder extends PloneObject {
 					break;
 			}
 		}
-		this.loading = false;
-		return this.loaded = true;
-	}
-
-	private _loadRoot(cookie: Cookie): void {
-		return;
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/@@site-controlpanel',
-			headers: { cookie },
-		};
-		get(options);
-	}
-
-	private async _loadExternal(cookie: Cookie) {
-		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
-		const response = await get({
-			host: this.uri.authority,
-			path: externalEditPath,
-			headers: { cookie },
-		});
-		if (response.statusCode !== 200) {
-			this.loading = false;
-			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
-		}
-		const buffer = await getBuffer(response);
-		this.parseExternalEdit(buffer);
+		this.loadingEntries = false;
+		return this.loadedEntries = true;
 	}
 }
