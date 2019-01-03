@@ -3,7 +3,7 @@
 	"displayName": "PloneFS",
 	"description": "Open Plone sites",
 	"icon": "images/PloneFS.png",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"publisher": "derekdavenport",
 	"license": "MIT",
 	"repository": {
