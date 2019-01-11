@@ -25,51 +25,49 @@ export type CookieStore = {
 	[uri: string]: Cookie;
 };
 
+type RootStore = {
+	folder: Folder,
+	cookie: Cookie,
+}
+
+type Roots = {
+	[uri: string]: RootStore,
+};
+
 export default class PloneFS implements vscode.FileSystemProvider {
-	private cookieStore: CookieStore;
-	private roots: { [host: string]: Folder } = {};
+	private roots: Roots;
 
 	constructor(cookieStore: CookieStore) {
-		this.cookieStore = cookieStore;
-		for (const uriValue in cookieStore) {
-			const uri = vscode.Uri.parse('plone://' + uriValue);
-			if (!this.roots[uri.authority]) {
-				this.roots[uri.authority] = new Folder(uri.with({ path: '/' }));
-			}
-
-			const parts = uri.path.split('/').slice(1);
-			let parent = this.roots[uri.authority];
-			parent.loadedEntries = true;
-			for (const part of parts) {
-				const parentPath = parent.uri.path;
-				const folderPath = path.posix.resolve(parentPath, part);
-				const folderUri = parent.uri.with({ path: folderPath });
-				const folder = new Folder(folderUri);
-				folder.loadedEntries = true;
-				parent.entries.set(part, folder);
-				parent = folder;
-			}
-			// last folder is site root and is not loaded
-			parent.isRoot = true;
-			parent.loadedEntries = false;
+		this.roots = {};
+		for (const rootUriValue of Object.keys(cookieStore)) {
+			const uri = vscode.Uri.parse('plone://' + rootUriValue);
+			this.roots[rootUriValue] = {
+				folder: new Folder(uri, true, true),
+				cookie: cookieStore[rootUriValue],
+			};
 		}
 	}
 
-	// TODO: quick patch. figure out a better way to store/retrieve cookies
-	// so that each file can get access after updated
-	getCookie(uri: vscode.Uri): Cookie {
-		let cookie: Cookie = '';
+	getRoot(uri: vscode.Uri): RootStore & { path: string } {
 		const uriValue = uri.authority + uri.path;
-		let matchLength = 0;
-		for (const cookieUriValue in this.cookieStore) {
-			if (uriValue.indexOf(cookieUriValue) === 0) {
-				if (cookieUriValue.length > matchLength) {
-					matchLength = cookieUriValue.length;
-					cookie = this.cookieStore[cookieUriValue];
+		// sort longest to shortest
+		const rootUriValues = Object.keys(this.roots).sort((a, b) => b.length - a.length);
+		for (const rootUriValue of rootUriValues) {
+			if (uriValue.indexOf(rootUriValue) === 0) {
+				return {
+					...this.roots[rootUriValue],
+					path: uriValue.substring(rootUriValue.length),
 				}
 			}
 		}
-		return cookie;
+		// not found
+		throw vscode.FileSystemError.FileNotFound('no root folder found for ' + uriValue);
+	}
+
+	_debug_expireCookies() {
+		for (const uriValue in this.roots) {
+			this.roots[uriValue].cookie = '';
+		}
 	}
 
 	// --- manage file metadata
@@ -80,7 +78,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
 		const entry = await this._lookupAsFolder(uri, false);
-		const loadedEntries = await entry.loadEntries(this.getCookie(uri));
+		const loadedEntries = await entry.loadEntries(this.getRoot(uri).cookie);
 		if (!loadedEntries) {
 			throw vscode.FileSystemError.Unavailable('could not load');
 		}
@@ -96,8 +94,15 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
 		const file = await this._lookupAsFile(uri, false);
-		const loaded = await file.load(this.getCookie(uri));
-		if (!loaded) {
+		try {
+			await file.load(this.getRoot(uri).cookie);
+		}
+		catch (error) {
+			if (error instanceof vscode.FileSystemError) {
+				console.log(error.name);
+			}
+		}
+		if (!file.loaded) {
 			throw vscode.FileSystemError.Unavailable('unable to load file');
 			// todo: try again?
 		}
@@ -125,7 +130,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		file.size = content.byteLength;
 		file.data = content;
 
-		const saved = await file.save(this.getCookie(uri));
+		const saved = await file.save(this.getRoot(uri).cookie);
 		if (saved) {
 			this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
 		}
@@ -136,33 +141,87 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	// --- manage files/directories
 
+	async copy(source: vscode.Uri, destination: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+		const entry = await this._lookup(source, false);
+		//let newName = path.posix.basename(destination.path);
+		const cookie = this.getRoot(source).cookie;
+		const copyCookie = await entry.copy(cookie);
+		const newParent = await this._lookupParentFolder(destination);
+		await newParent.paste(cookie + '; ' + copyCookie);
+		const copy = Object.assign(Object.create(Object.getPrototypeOf(entry)), entry);
+		// if new folder already has entry with this name
+		// plone will automatically prefix the new file with 'copy[n]_of_'
+		// if the file already has the prefix 'copy[n]_of_' it will increment n
+		// if n is 1, it is omitted
+		const match = entry.name.match(/copy(\d*)_of_(.*)/);
+		let copyNumber, copyName;
+		if (match) {
+			copyNumber = parseInt(match[1]);
+			copyName = match[2];
+		}
+		else {
+			copyNumber = 1;
+			copyName = copy.name;
+		}
+		while (newParent.entries.has(copy.name)) {
+			const copySuffix = copyNumber === 1 ? '' : copyNumber;
+			copy.name = `copy${copySuffix}_of_${copyName}`;
+			copyNumber++;
+		}
+		copy.uri = destination.with({ path: copy.path.dir + '/' + copy.name });
+		newParent.entries.set(copy.name, copy);
+
+		this._fireSoon(
+			{ type: vscode.FileChangeType.Created, uri: copy.uri },
+		);
+	}
+
 	async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }) {
 		if (!options.overwrite && await this._lookup(newUri, true)) {
 			throw vscode.FileSystemError.FileExists(newUri);
 		}
 
-		let entry = await this._lookup(oldUri, false);
-		let oldParent = await this._lookupParentFolder(oldUri);
+		const entry = await this._lookup(oldUri, false);
+		const oldParent = await this._lookupParentFolder(oldUri);
+		const oldName = entry.name;
 
-		let newParent = await this._lookupParentFolder(newUri);
-		let newName = path.posix.basename(newUri.path);
+		const newParent = await this._lookupParentFolder(newUri);
+
+		const cookie = this.getRoot(oldUri).cookie;
 
 		if (oldParent === newParent) {
 			// rename!
-			entry.name = newName;
-			await entry.save(this.cookieStore[newUri.authority]);
+			entry.name = path.posix.basename(newUri.path);
+			await entry.save(cookie);
 		}
 		else {
-			throw vscode.FileSystemError.Unavailable('not implemented');
-		}
+			// move!
+			const cutCookie: Cookie = await entry.cut(cookie);
+			await newParent.paste(cookie + '; ' + cutCookie);
 
-		oldParent.entries.delete(entry.name);
-		entry.name = newName;
-		newParent.entries.set(newName, entry);
+			const match = entry.name.match(/copy(\d*)_of_(.*)/);
+			let copyNumber, copyName;
+			if (match) {
+				copyNumber = parseInt(match[1]);
+				copyName = match[2];
+			}
+			else {
+				copyNumber = 1;
+				copyName = entry.name;
+			}
+			while (newParent.entries.has(entry.name)) {
+				const copySuffix = copyNumber === 1 ? '' : copyNumber;
+				entry.name = `copy${copySuffix}_of_${copyName}`;
+				copyNumber++;
+			}
+			entry.uri = newUri.with({ path: entry.path.dir + '/' + entry.name });
+		}
+		oldParent.entries.delete(oldName);
+		newParent.entries.set(entry.name, entry);
 
 		this._fireSoon(
 			{ type: vscode.FileChangeType.Deleted, uri: oldUri },
-			{ type: vscode.FileChangeType.Created, uri: newUri },
+			{ type: vscode.FileChangeType.Created, uri: entry.uri },
 		);
 	}
 
@@ -189,7 +248,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			throw vscode.FileSystemError.FileExists(uri);
 		}
 		let entry = new Folder(uri);
-		const saved = await entry.save(this.getCookie(uri));
+		const saved = await entry.save(this.getRoot(uri).cookie);
 		if (!saved) {
 			throw vscode.FileSystemError.Unavailable(uri);
 		}
@@ -240,8 +299,10 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			uri = uri.with({ path: uri.path.slice(0, -10), query: '' });
 			returnLocalCss = true;
 		}
-		let parts = uri.path.split('/').slice(1);
-		let entry: Entry = this.roots[uri.authority];
+		//let parts = uri.path.split('/').slice(1);
+		const root = this.getRoot(uri);
+		let entry: Entry = root.folder;
+		let parts = root.path.split('/').slice(1);
 		for (const part of parts) {
 			if (!part) {
 				continue;
@@ -250,7 +311,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			if (entry instanceof Folder) {
 				// this can happen when VSCode restores a saved workspace with open folders
 				if (!entry.loadedEntries) {
-					await entry.loadEntries(this.getCookie(uri));
+					await entry.loadEntries(this.getRoot(uri).cookie);
 				}
 				child = entry.entries.get(part);
 			}
@@ -258,7 +319,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				if (!silent) {
 					throw vscode.FileSystemError.FileNotFound(uri);
 				} else {
-					return undefined;
+					return;
 				}
 			}
 			entry = child;
@@ -302,7 +363,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
-	watch(/*resource: vscode.Uri, opts*/): vscode.Disposable {
+	watch(/*resource: vscode.Uri, options: { recursive: boolean; excludes: string[] }*/): vscode.Disposable {
 		// ignore, fires for all changes...
 		return new vscode.Disposable(() => { });
 	}

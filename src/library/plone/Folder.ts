@@ -153,4 +153,16 @@ export default class Folder extends PloneObject {
 		this.loadingEntries = false;
 		return this.loadedEntries = true;
 	}
+
+	async paste(cookie: Cookie): Promise<void> {
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: this.uri.path + '/object_paste',
+			headers: { cookie },
+		};
+		const response = await get(options);
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
+		}
+	}
 }

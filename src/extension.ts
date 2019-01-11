@@ -43,7 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (entry instanceof PloneObject) {
 					let cookie: Cookie | undefined;
 					if (!entry.loaded) {
-						cookie = ploneFS.getCookie(entry.uri);
+						cookie = ploneFS.getRoot(entry.uri).cookie;
 						await entry.load(cookie);
 					}
 					const oldBuffer = entry.settings.get(settingName);
@@ -65,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					entry.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
 					// TODO: consider moving cookie to PloneObject instance
 					if (!cookie) {
-						cookie = ploneFS.getCookie(entry.uri);
+						cookie = ploneFS.getRoot(entry.uri).cookie;
 					}
 					entry.saveSetting(settingName, cookie);
 
@@ -78,8 +78,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					description = 'Edit Description',
 					localCSS = 'Edit Local CSS',
 				};
-				let items: Picks[] = [Picks.title, Picks.description];
 				const entry = await ploneFS.stat(uri);
+				// disable title/description for root until supported
+				let items: Picks[] = (entry instanceof Folder && entry.isRoot) ? [] : [Picks.title, Picks.description];
 				if (entry.hasLocalCss) {
 					items.push(Picks.localCSS);
 				}
@@ -117,6 +118,10 @@ export async function activate(context: vscode.ExtensionContext) {
 				'plonefs.editSettings',
 				(uri: vscode.Uri) => settingsMenu(uri),
 			));
+			context.subscriptions.push(vscode.commands.registerCommand(
+				'plonefs.debug.expireCookie',
+				() => ploneFS._debug_expireCookies()
+			));	
 		}
 	}
 
@@ -170,8 +175,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
-		let uri: vscode.Uri | undefined, cookie: string | undefined;
-		while (!cookie) {
+		let uri: vscode.Uri | undefined;
+		while (!uri) {
 			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})), 'new'];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',

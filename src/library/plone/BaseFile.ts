@@ -15,9 +15,12 @@ export default abstract class BaseFile extends PloneObject {
 	}
 
 	async save(cookie: string): Promise<boolean> {
-		if (!this.exists) {
+		// if doesn't exist or a rename, need full save
+		if (!this.exists || this.path.base !== this.name) {
 			return super.save(cookie);
 		}
+		// this is a quick save
+		// TODO: make tinymce save its own function so code not duplicated in saveSetting
 		const options: RequestOptions = {
 			host: this.uri.authority,
 			path: this.uri.path + '/tinymce-save',

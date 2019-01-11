@@ -28,6 +28,10 @@ export default class Document extends BaseFile {
 			path: externalEditPath,
 			headers: { cookie },
 		});
+		if (response.statusCode === 302) {
+			this.loading = false;
+			throw vscode.FileSystemError.NoPermissions(this.uri);
+		}
 		if (response.statusCode !== 200) {
 			this.loading = false;
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);

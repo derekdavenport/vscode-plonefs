@@ -4,6 +4,7 @@ import * as path from 'path';
 import { get, post, getBuffer } from '../util';
 import { RequestOptions } from 'https';
 import { LocalCss } from '.';
+import { Cookie } from '../../PloneFS';
 
 enum Mode {
 	Header,
@@ -182,7 +183,41 @@ export default abstract class PloneObject implements vscode.FileStat {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
 		// in case of rename
+		// TODO: make newName a param or something?
 		this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
 		return this.exists = true;
+	}
+
+	private async _cutCopy(cookie: Cookie, action: 'cut' | 'copy'): Promise<Cookie> {
+		const options: RequestOptions = {
+			host: this.uri.authority,
+			path: this.uri.path + '/object_' + action,
+			headers: { cookie },
+		};
+		const response = await get(options);
+		// 302 should mean success
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
+		}
+		// need __cp cookie which identifies what was cut
+		const cookieHeaders = response.headers['set-cookie'];
+		if (!cookieHeaders) {
+			throw vscode.FileSystemError.Unavailable('no cookies');
+		}
+		for (const cookieHeader of cookieHeaders) {
+			if (cookieHeader && cookieHeader.startsWith('__cp=')) {
+				return cookieHeader.split(';')[0];
+			}
+		}
+		throw vscode.FileSystemError.Unavailable('no ' + action + ' cookie');
+
+	}
+
+	cut(cookie: Cookie): Promise<Cookie> {
+		return this._cutCopy(cookie, 'cut');
+	}
+
+	copy(cookie: Cookie): Promise<Cookie> {
+		return this._cutCopy(cookie, 'copy');
 	}
 }

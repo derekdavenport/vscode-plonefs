@@ -1,6 +1,6 @@
 {
 	"name": "vscode-plonefs",
-	"displayName": "PloneFS",
+	"displayName": "Plone File System",
 	"description": "Open Plone sites",
 	"icon": "images/PloneFS.png",
 	"version": "0.1.4",
@@ -25,12 +25,17 @@
 		"commands": [
 			{
 				"command": "plonefs.workspace",
-				"title": "Open Plone Workspace",
+				"title": "Add Plone site to Workspace",
 				"category": "PloneFS"
 			},
 			{
 				"command": "plonefs.editSettings",
 				"title": "More Plone Options",
+				"category": "PloneFS"
+			},
+			{
+				"command": "plonefs.debug.expireCookie",
+				"title": "Expire Cookie",
 				"category": "PloneFS"
 			}
 		],

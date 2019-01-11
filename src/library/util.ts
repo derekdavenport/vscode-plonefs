@@ -178,3 +178,14 @@ export function postMultipartData(options: https.RequestOptions, multipartData: 
 function escapePath(uriPath: string): string {
 	return uriPath.replace(/[\u0000-\u0020]/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 }
+
+function parseCookies(headers: http.IncomingHttpHeaders): object[] {
+	const cookies = [];
+	const cookieHeaders = headers['set-cookie'];
+	if (cookieHeaders) {
+		for (const cookieHeader of cookieHeaders) {
+			cookies.push(querystring.parse(cookieHeader, ';'));
+		}
+	}
+	return cookies;
+}
