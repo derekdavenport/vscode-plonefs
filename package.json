@@ -3,7 +3,7 @@
 	"displayName": "Plone File System",
 	"description": "Open Plone sites",
 	"icon": "images/PloneFS.png",
-	"version": "0.1.4",
+	"version": "0.2.0",
 	"publisher": "derekdavenport",
 	"license": "MIT",
 	"repository": {
@@ -42,15 +42,19 @@
 		"menus": {
 			"explorer/context": [
 				{
-					"when": "resourceScheme == plone",
 					"command": "plonefs.editSettings",
-					"group": "PloneFS"
+					"group": "PloneFS",
+					"when": "resourceScheme == plone"
 				}
 			],
 			"commandPalette": [
 				{
 					"command": "plonefs.editSettings",
-					"when": "workbenchState == workspace"
+					"when": "resourceScheme == plone"
+				},
+				{
+					"command": "plonefs.debug.expireCookie",
+					"when": "inDebugMode"
 				}
 			]
 		}
