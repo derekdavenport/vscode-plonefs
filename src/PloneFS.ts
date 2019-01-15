@@ -141,7 +141,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	// --- manage files/directories
 
-	async copy(source: vscode.Uri, destination: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+	async copy(source: vscode.Uri, destination: vscode.Uri, /* options: { overwrite: boolean } */): Promise<void> {
 		const entry = await this._lookup(source, false);
 		//let newName = path.posix.basename(destination.path);
 		const cookie = this.getRoot(source).cookie;

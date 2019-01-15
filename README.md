@@ -1,8 +1,6 @@
 # PloneFS
 
-Open site by issuing command "PloneFS: Open Plone Workspace"
-
-Move and Delete currently unsupported.
+Open Plone sites in Visual Studio Code
 
 ## Use
 
@@ -24,7 +22,7 @@ Move and Delete currently unsupported.
 * A drop down will appear with options you can edit
 * If selected, Local CSS wil open as a document
 
-## Known bugs / and missing features
+## Known bugs / missing features
 
 * cannot edit site root Title / Description
 * cannot login again after cookie expires (workaround: close and reopen Visual Studio Code)

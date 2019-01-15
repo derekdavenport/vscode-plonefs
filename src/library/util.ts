@@ -179,7 +179,7 @@ function escapePath(uriPath: string): string {
 	return uriPath.replace(/[\u0000-\u0020]/g, $1 => '%' + $1.charCodeAt(0).toString(16));
 }
 
-function parseCookies(headers: http.IncomingHttpHeaders): object[] {
+export function parseCookies(headers: http.IncomingHttpHeaders): object[] {
 	const cookies = [];
 	const cookieHeaders = headers['set-cookie'];
 	if (cookieHeaders) {

@@ -1,7 +1,7 @@
 {
 	"name": "vscode-plonefs",
 	"displayName": "Plone File System",
-	"description": "Open Plone sites",
+	"description": "Open Plone sites in Visual Studio Code",
 	"icon": "images/PloneFS.png",
 	"version": "0.2.0",
 	"publisher": "derekdavenport",

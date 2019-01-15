@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.2.1
+
+- README changes
+
 ## 0.2
 
 - Added Cut/Copy/Paste
