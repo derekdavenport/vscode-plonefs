@@ -25,17 +25,17 @@ export type CookieStore = {
 	[uri: string]: Cookie;
 };
 
-type RootStore = {
+type Root = {
 	folder: Folder,
 	cookie: Cookie,
 }
 
-type Roots = {
-	[uri: string]: RootStore,
+type RootStore = {
+	[uri: string]: Root,
 };
 
 export default class PloneFS implements vscode.FileSystemProvider {
-	private roots: Roots;
+	private roots: RootStore;
 
 	constructor(cookieStore: CookieStore) {
 		this.roots = {};
@@ -48,7 +48,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 	}
 
-	getRoot(uri: vscode.Uri): RootStore & { path: string } {
+	getRoot(uri: vscode.Uri): Root & { path: string } {
 		const uriValue = uri.authority + uri.path;
 		// sort longest to shortest
 		const rootUriValues = Object.keys(this.roots).sort((a, b) => b.length - a.length);
