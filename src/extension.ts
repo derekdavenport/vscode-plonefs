@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore, Cookie } from './PloneFS';
 import { Document, File, PloneObject, LocalCss, Folder, Entry } from './library/plone';
+import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
 
@@ -76,11 +77,39 @@ export async function activate(context: vscode.ExtensionContext) {
 				enum Picks {
 					title = 'Edit Title',
 					description = 'Edit Description',
+					checkOut = 'Check Out',
+					cancelCheckOut = 'Cancel Check Out',
+					checkIn = 'Check In',
 					localCSS = 'Edit Local CSS',
 				};
 				const entry = await ploneFS.stat(uri);
+				let cookie;
 				// disable title/description for root until supported
 				let items: Picks[] = (entry instanceof Folder && entry.isRoot) ? [] : [Picks.title, Picks.description];
+				// TODO: support news, event, collection
+				if (entry instanceof Document) {
+					const match = copyMatch(entry.name);
+					let isWorkingCopy = false;
+					if (match) {
+						if (!cookie) {
+							cookie = ploneFS.getRoot(entry.uri).cookie;
+						}
+						const response = await get({
+							host: entry.uri.authority,
+							path: uri.path + '/@@iterate_control/checkin_allowed',
+							headers: { cookie },
+						});
+						const buffer = await getBuffer(response);
+						if (buffer.equals(Buffer.from('True'))) {
+							items.push(Picks.checkIn);
+							items.push(Picks.cancelCheckOut);
+							isWorkingCopy = true;
+						}
+					}
+					if (!isWorkingCopy) {
+						items.push(Picks.checkOut);
+					}
+				}
 				if (entry.hasLocalCss) {
 					items.push(Picks.localCSS);
 				}
@@ -99,6 +128,44 @@ export async function activate(context: vscode.ExtensionContext) {
 						break;
 					case Picks.description:
 						setSetting(entry, 'description');
+						break;
+					case Picks.checkOut:
+						let tryCheckOut: string | undefined = 'try';
+						while (tryCheckOut) {
+							try {
+								// TODO: avoid cast
+								tryCheckOut = await ploneFS.checkOut(entry as Document);
+							}
+							catch (error) {
+								tryCheckOut = await vscode.window.showErrorMessage('Unable to check out. It may already be checked out\n' + error.message, 'try again');
+							}
+						}
+						break;
+					case Picks.checkIn:
+						let tryCheckin: string | undefined = 'try';
+						let checkin_message: string | undefined = '';
+						while (tryCheckin) {
+							try {
+								checkin_message = await vscode.window.showInputBox({
+									prompt: 'Check-in Message',
+									value: checkin_message,
+									ignoreFocusOut: true,
+								});
+								if (checkin_message === undefined) {
+									tryCheckin = await vscode.window.showInformationMessage('Cancelled Check-in', 'try again');
+								}
+								else {
+									// TODO: avoid cast
+									tryCheckin = await ploneFS.checkIn(entry as Document, checkin_message);
+								}
+							}
+							catch (error) {
+								tryCheckin = await vscode.window.showErrorMessage('Unable to check in.\n' + error.message, 'try again');
+							}
+						}
+						break;
+					case Picks.cancelCheckOut:
+						await ploneFS.cancelCheckOut(entry as Document);
 						break;
 					case Picks.localCSS:
 						if (entry instanceof Folder) {
@@ -121,7 +188,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.debug.expireCookie',
 				() => ploneFS._debug_expireCookies()
-			));	
+			));
 		}
 	}
 

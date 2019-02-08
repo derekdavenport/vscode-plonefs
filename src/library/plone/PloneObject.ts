@@ -44,12 +44,16 @@ export default abstract class PloneObject implements vscode.FileStat {
 	set uri(uri: vscode.Uri) {
 		this._uri = uri;
 		this._path = path.posix.parse(uri.path);
+		this._name = this._path.base;
 	}
 	private _path!: path.ParsedPath;
 	get path() {
 		return this._path;
 	}
-	name: string;
+	private _name!: string;
+	get name() {
+		return this._name;
+	}
 
 	loading: boolean;
 	loaded: boolean;
@@ -69,7 +73,6 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.ctime = this.mtime = Date.now();
 		this.size = 0;
 		this.uri = uri;
-		this.name = this.path.base;
 
 		this.loading = false;
 		this.loaded = false;

@@ -9,7 +9,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post } from './library/util';
+import { get, post, copyMatch } from './library/util';
 
 import { Folder, BaseFile, Document, File, Entry } from './library/plone';
 import { RequestOptions } from 'https';
@@ -131,12 +131,10 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		file.data = content;
 
 		const saved = await file.save(this.getRoot(uri).cookie);
-		if (saved) {
-			this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
-		}
-		else {
+		if (!saved) {
 			throw vscode.FileSystemError.Unavailable(uri);
 		}
+		this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
 	}
 
 	// --- manage files/directories
@@ -191,7 +189,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 		if (oldParent === newParent) {
 			// rename!
-			entry.name = path.posix.basename(newUri.path);
+			//entry.name = path.posix.basename(newUri.path);
+			entry.uri = newUri;
 			await entry.save(cookie);
 		}
 		else {
@@ -199,8 +198,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			const cutCookie: Cookie = await entry.cut(cookie);
 			await newParent.paste(cookie + '; ' + cutCookie);
 
-			const match = entry.name.match(/copy(\d*)_of_(.*)/);
-			let copyNumber, copyName;
+			const match = copyMatch(entry.name);
+			let copyNumber: number, copyName: string;
 			if (match) {
 				copyNumber = parseInt(match[1]);
 				copyName = match[2];
@@ -209,12 +208,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				copyNumber = 1;
 				copyName = entry.name;
 			}
-			while (newParent.entries.has(entry.name)) {
+			let testName = entry.name;
+			while (newParent.entries.has(testName)) {
 				const copySuffix = copyNumber === 1 ? '' : copyNumber;
-				entry.name = `copy${copySuffix}_of_${copyName}`;
+				testName = `copy${copySuffix}_of_${copyName}`;
 				copyNumber++;
 			}
-			entry.uri = newUri.with({ path: entry.path.dir + '/' + entry.name });
+			entry.uri = newUri.with({ path: newParent.uri.path + '/' + testName });
 		}
 		oldParent.entries.delete(oldName);
 		newParent.entries.set(entry.name, entry);
@@ -256,6 +256,92 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		parent.mtime = Date.now();
 		parent.size += 1;
 		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
+	}
+
+	async checkOut<D extends Document>(document: D): Promise<undefined> {
+		const response = await get({
+			host: document.uri.authority,
+			path: document.uri.path + '/@@content-checkout',
+			headers: { cookie: this.getRoot(document.uri).cookie },
+		});
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
+		}
+		const newUriValue = response.headers['location'];
+		if (!newUriValue) {
+			throw vscode.FileSystemError.Unavailable('could not create working copy');
+		}
+		const parent = await this._lookupParentFolder(document.uri);
+		const copy = Object.assign<D, D>(Object.create(Object.getPrototypeOf(document)), document);
+		copy.mtime = Date.now();
+		copy.uri = vscode.Uri.parse(newUriValue).with({ scheme: 'plone' });
+		parent.entries.set(copy.path.base, copy);
+		parent.mtime = Date.now();
+		parent.size += 1;
+
+		this._fireSoon(
+			{ type: vscode.FileChangeType.Created, uri: copy.uri },
+		);
+		return;
+	}
+
+	async cancelCheckOut(document: Document): Promise<void> {
+		const cookie = this.getRoot(document.uri).cookie;
+		const response = await post(
+			{
+				host: document.uri.authority,
+				path: document.uri.path + '/@@content-cancel-checkout',
+				headers: { cookie },
+			},
+			{
+				'form.button.Cancel': 'Cancel+checkout',
+			}
+		);
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
+		}
+
+		this._fireSoon(
+			{ type: vscode.FileChangeType.Deleted, uri: document.uri },
+		);
+	}
+
+	async checkIn<D extends Document>(document: D, checkin_message: string): Promise<undefined> {
+		const cookie = this.getRoot(document.uri).cookie;
+		const response = await post(
+			{
+				host: document.uri.authority,
+				path: document.uri.path + '/@@content-checkin',
+				headers: { cookie },
+			},
+			{
+				checkin_message,
+				'form.button.Checkin': 'Check+in',
+			}
+		);
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
+		}
+		const originalUri = vscode.Uri.parse(response.headers['location']!).with({ scheme: 'plone' });
+		const textDocuments = vscode.workspace.textDocuments;
+		// if original is open, update contents
+		const originalDocument = textDocuments.find(document => document.uri.authority === originalUri.authority && document.uri.path === originalUri.path);
+		if (originalDocument) {
+			const range = new vscode.Range(originalDocument.lineAt(0).range.start, originalDocument.lineAt(originalDocument.lineCount - 1).range.end);
+			const workspaceEdit = new vscode.WorkspaceEdit();
+			workspaceEdit.set(originalUri, [new vscode.TextEdit(range, document.data.toString())]);
+			// this marks the file as dirty
+			await vscode.workspace.applyEdit(workspaceEdit);
+			// TODO: fake the save?
+			//originalDocument.save();
+			//this.writeFile(originalUri, document.data, { create: false, overwrite: true });
+		}
+
+		this._fireSoon(
+			{ type: vscode.FileChangeType.Changed, uri: originalUri },
+			{ type: vscode.FileChangeType.Deleted, uri: document.uri },
+		);
+		return;
 	}
 
 	static async login(uri: vscode.Uri, { username, password }: Credentials): Promise<string> {

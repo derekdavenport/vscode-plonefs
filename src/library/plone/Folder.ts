@@ -140,13 +140,13 @@ export default class Folder extends PloneObject {
 		for (const item of json.items) {
 			switch (item.normalized_type) {
 				case 'folder':
-					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url), true));
+					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
 					break;
 				case 'document':
-					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url), true));
+					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
 					break;
 				case 'file':
-					this.entries.set(item.id, new File(vscode.Uri.parse(item.url), true));
+					this.entries.set(item.id, new File(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
 					break;
 			}
 		}

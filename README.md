@@ -1,4 +1,4 @@
-# PloneFS
+# Plone File System (PloneFS)
 
 Open Plone sites in Visual Studio Code
 
@@ -24,6 +24,8 @@ Open Plone sites in Visual Studio Code
 
 ## Known bugs / missing features
 
+* only opens pages, not news, events, collections, etc.
+* cannot check out a page
 * cannot edit site root Title / Description
 * cannot login again after cookie expires (workaround: close and reopen Visual Studio Code)
 * cannot delete

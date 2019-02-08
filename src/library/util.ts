@@ -189,3 +189,7 @@ export function parseCookies(headers: http.IncomingHttpHeaders): object[] {
 	}
 	return cookies;
 }
+
+export function copyMatch(name: string): RegExpMatchArray | null {
+	return name.match(/copy(\d*)_of_(.*)/);
+}
