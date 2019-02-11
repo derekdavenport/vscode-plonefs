@@ -29,7 +29,7 @@ export default class LocalCss extends BaseFile {
 		return this.forRoot ? this._saveRoot(cookie) : super.save(cookie);
 	}
 
-	private async _load(cookie: string): Promise<boolean> {
+	protected async _load(cookie: string): Promise<boolean> {
 		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
 		const response = await get({
 			host: this.uri.authority,

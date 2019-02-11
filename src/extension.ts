@@ -27,14 +27,14 @@ export async function activate(context: vscode.ExtensionContext) {
 			// (unless VS Code already figured it out)
 			context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(async doc => {
 				if (doc.languageId === 'plaintext') {
-					const stat: vscode.FileStat = await ploneFS.stat(doc.uri);
-					if (stat instanceof Document) {
+					const entry: Entry = await ploneFS.stat(doc.uri);
+					if (entry instanceof Document) {
 						vscode.languages.setTextDocumentLanguage(doc, 'html');
 					}
-					else if (stat instanceof File && stat.language && stat.language !== 'plaintext') {
-						vscode.languages.setTextDocumentLanguage(doc, stat.language);
+					else if (entry instanceof File && entry.language && entry.language !== 'plaintext') {
+						vscode.languages.setTextDocumentLanguage(doc, entry.language);
 					}
-					else if (stat instanceof LocalCss) {
+					else if (entry instanceof LocalCss) {
 						vscode.languages.setTextDocumentLanguage(doc, 'css');
 					}
 				}
@@ -77,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				enum Picks {
 					title = 'Edit Title',
 					description = 'Edit Description',
+					setState = 'Set State',
 					checkOut = 'Check Out',
 					cancelCheckOut = 'Cancel Check Out',
 					checkIn = 'Check In',
@@ -86,7 +87,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				let cookie;
 				// disable title/description for root until supported
 				let items: Picks[] = (entry instanceof Folder && entry.isRoot) ? [] : [Picks.title, Picks.description];
-				// TODO: support news, event, collection
+
+				// no state on files (or images if ever supported)
+				if (!(entry instanceof File)) {
+					items.push(Picks.setState)
+				}
+
 				if (entry instanceof Document) {
 					const match = copyMatch(entry.name);
 					let isWorkingCopy = false;
@@ -166,6 +172,37 @@ export async function activate(context: vscode.ExtensionContext) {
 						break;
 					case Picks.cancelCheckOut:
 						await ploneFS.cancelCheckOut(entry as Document);
+						break;
+					case Picks.setState:
+						enum States {
+							'Internal draft' = 'show_internally',
+							'Externally visible' = 'publish_externally',
+							'Internally published' = 'publish_internally',
+							'Internally restricted' = 'publish_restricted',
+							'Private' = 'hide',
+							'Pending review' = 'submit',
+						};
+						const state = await vscode.window.showQuickPick(Object.keys(States), {
+							placeHolder: 'Choose State',
+							canPickMany: false,
+							ignoreFocusOut: true,
+						}) as keyof typeof States | undefined;
+						if (state) {
+							if (!cookie) {
+								cookie = ploneFS.getRoot(entry.uri).cookie;
+							}
+							const response = await get({
+								host: entry.uri.authority,
+								path: uri.path + '/content_status_modify?workflow_action=' + States[state],
+								headers: { cookie },
+							});
+							if (response.statusCode === 302) {
+								vscode.window.showInformationMessage(`State set to "${state}"`);
+							}
+							else {
+								vscode.window.showErrorMessage(`Unable to set state to "${state}"\n${response.statusCode}: ${response.statusMessage}`);
+							}
+						}
 						break;
 					case Picks.localCSS:
 						if (entry instanceof Folder) {

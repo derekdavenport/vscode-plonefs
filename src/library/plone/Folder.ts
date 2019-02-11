@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PloneObject, Document, File, LocalCss, Entry } from '.';
+import { PloneObject, Document, NewsItem, File, LocalCss, Entry, Event, Topic } from '.';
 import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
@@ -19,9 +19,9 @@ type Item = {
 	is_folderish: boolean;
 	review_state: boolean;
 	icon: string;
-	portal_type: 'Folder' | 'Document';
+	portal_type: 'Folder' | 'Document' | 'News Item' | 'Event' | 'Topic';
 	id: string;
-	normalized_type: 'folder' | 'document' | 'file';
+	normalized_type: 'folder' | 'document' | 'news-item' | 'event' | 'topic' | 'file';
 };
 
 export default class Folder extends PloneObject {
@@ -140,13 +140,22 @@ export default class Folder extends PloneObject {
 		for (const item of json.items) {
 			switch (item.normalized_type) {
 				case 'folder':
-					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
+					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
 					break;
 				case 'document':
-					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
+					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
+					break;
+				case 'news-item':
+					this.entries.set(item.id, new NewsItem(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
+					break;
+				case 'event':
+					this.entries.set(item.id, new Event(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
+					break;
+				case 'topic':
+					this.entries.set(item.id, new Topic(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
 					break;
 				case 'file':
-					this.entries.set(item.id, new File(vscode.Uri.parse(item.url).with({scheme: 'plone'}), true));
+					this.entries.set(item.id, new File(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
 					break;
 			}
 		}

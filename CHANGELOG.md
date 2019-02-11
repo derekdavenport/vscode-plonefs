@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.3.0
+
+- Added to More Plone Options context menu: Check out, Cancel Check Out, Check In
+- Added support for News Items, Events, and Collections (aka Topics)
+- Added setting State
+- Fixed not being able to edit a file's Title/Description
+
 ## 0.2.1
 
 - README changes

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { get, getBuffer, post } from '../util';
+import { post } from '../util';
 import { BaseFile } from '.';
 import { RequestOptions } from 'https';
 
@@ -11,28 +11,13 @@ export default class File extends BaseFile {
 		this.language = 'plaintext';
 	}
 
-	load(cookie: string): Promise<boolean> {
-		if (this.loading) {
-			return this.loadingPromise;
-		}
-		this.loading = true;
-		return this.loadingPromise = this._load(cookie);
-	}
+	protected async _load(cookie: string): Promise<boolean> {
+		const loaded = super._load(cookie);
 
-	private async _load(cookie: string): Promise<boolean> {
 		const languagesPromise = vscode.languages.getLanguages();
-		const response = await get({
-			host: this.uri.authority,
-			path: this.uri.path + '/at_download/file',
-			headers: { cookie },
-		});
-		if (response.statusCode !== 200) {
-			this.loading = false;
-			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
-		}
-
-		const contentType = response.headers['content-type'];
-		if (contentType) {
+		const contentTypeBuffer = this.settings.get('content_type');
+		if (contentTypeBuffer) {
+			const contentType = contentTypeBuffer.toString();
 			const mimeType = contentType.split(';')[0];
 			const [type, subtype] = mimeType.split('/');
 			const languages = await languagesPromise;
@@ -43,10 +28,45 @@ export default class File extends BaseFile {
 				this.language = type;
 			}
 		}
-		this.data = await getBuffer(response);
-		this.loading = false;
-		return this.loaded = true;
+		return loaded;
 	}
+
+	// load(cookie: string): Promise<boolean> {
+	// 	if (this.loading) {
+	// 		return this.loadingPromise;
+	// 	}
+	// 	this.loading = true;
+	// 	return this.loadingPromise = this._load(cookie);
+	// }
+
+	// private async _load(cookie: string): Promise<boolean> {
+	// 	const languagesPromise = vscode.languages.getLanguages();
+	// 	const response = await get({
+	// 		host: this.uri.authority,
+	// 		path: this.uri.path + '/at_download/file',
+	// 		headers: { cookie },
+	// 	});
+	// 	if (response.statusCode !== 200) {
+	// 		this.loading = false;
+	// 		throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
+	// 	}
+
+	// 	const contentType = response.headers['content-type'];
+	// 	if (contentType) {
+	// 		const mimeType = contentType.split(';')[0];
+	// 		const [type, subtype] = mimeType.split('/');
+	// 		const languages = await languagesPromise;
+	// 		if (languages.indexOf(subtype) >= 0) {
+	// 			this.language = subtype;
+	// 		}
+	// 		else if (languages.indexOf(type) >= 0) {
+	// 			this.language = type;
+	// 		}
+	// 	}
+	// 	this.data = await getBuffer(response);
+	// 	this.loading = false;
+	// 	return this.loaded = true;
+	// }
 
 	async save(cookie: string) {
 		let savePath = this.uri.path;
