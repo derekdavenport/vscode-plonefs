@@ -34,6 +34,11 @@
 				"category": "PloneFS"
 			},
 			{
+				"command": "plonefs.changeState",
+				"title": "Change State",
+				"category": "PloneFS"
+			},
+			{
 				"command": "plonefs.debug.expireCookie",
 				"title": "Expire Cookie",
 				"category": "PloneFS"
@@ -50,6 +55,10 @@
 			"commandPalette": [
 				{
 					"command": "plonefs.editSettings",
+					"when": "resourceScheme == plone"
+				},
+				{
+					"command": "plonefs.changeState",
 					"when": "resourceScheme == plone"
 				},
 				{

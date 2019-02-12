@@ -29,6 +29,8 @@ const valueStartOffsets = {
 	[Mode.Python]: 2, // ': '
 };
 
+export type State = 'internal' | 'external' | 'internally_published' | 'internally_restricted' | 'private' | 'pending' | null;
+
 export default abstract class PloneObject implements vscode.FileStat {
 	static readonly savedText = Buffer.from('saved');
 
@@ -64,6 +66,8 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	exists: boolean;
 
+	state: State;
+
 	settings: Map<string, Buffer>;
 	hasLocalCss = false;
 	localCss: LocalCss | undefined;
@@ -77,6 +81,8 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.loading = false;
 		this.loaded = false;
 		this.loadingPromise = Promise.resolve(false);
+
+		this.state = 'internal';
 
 		this.exists = exists;
 		this.settings = new Map<string, Buffer>();

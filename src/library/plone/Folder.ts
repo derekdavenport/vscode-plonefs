@@ -3,6 +3,7 @@ import { PloneObject, Document, NewsItem, File, LocalCss, Entry, Event, Topic } 
 import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
+import { State } from './PloneObject';
 
 type Listing = {
 	parent_url: string;
@@ -17,7 +18,7 @@ type Item = {
 	title: string;
 	url: string;
 	is_folderish: boolean;
-	review_state: boolean;
+	review_state: State;
 	icon: string;
 	portal_type: 'Folder' | 'Document' | 'News Item' | 'Event' | 'Topic';
 	id: string;
@@ -123,6 +124,14 @@ export default class Folder extends PloneObject {
 
 	private async _loadEntries(cookie: Cookie): Promise<boolean> {
 		this.loadedEntries = false;
+		const classes = {
+			'folder': Folder,
+			'document': Document,
+			'news-item': NewsItem,
+			'event': Event,
+			'topic': Topic,
+			'file': File,
+		}
 		const options: RequestOptions = {
 			host: this.uri.authority,
 			path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',
@@ -138,25 +147,10 @@ export default class Folder extends PloneObject {
 		// json.path[0] // TODO: check if really root?
 		// json.upload_allowed // TODO: check this to know if can save?
 		for (const item of json.items) {
-			switch (item.normalized_type) {
-				case 'folder':
-					this.entries.set(item.id, new Folder(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
-				case 'document':
-					this.entries.set(item.id, new Document(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
-				case 'news-item':
-					this.entries.set(item.id, new NewsItem(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
-				case 'event':
-					this.entries.set(item.id, new Event(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
-				case 'topic':
-					this.entries.set(item.id, new Topic(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
-				case 'file':
-					this.entries.set(item.id, new File(vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true));
-					break;
+			if (item.normalized_type in classes) {
+				const entry = new classes[item.normalized_type](vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true);
+				entry.state = item.review_state;
+				this.entries.set(item.id, entry);
 			}
 		}
 		this.loadingEntries = false;

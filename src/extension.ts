@@ -6,6 +6,42 @@ import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
 
+enum StateText {
+	internal = 'Internal draft',
+	external = 'Externally visible',
+	internally_published = 'Internally published',
+	internally_restricted = 'Internally restricted',
+	private = 'Private',
+	pending = 'Pending review',
+};
+
+enum TextState {
+	'Internal draft' = 'internal',
+	'Externally visible' = 'external',
+	'Internally published' = 'internally_published',
+	'Internally restricted' = 'internally_restricted',
+	'Private' = 'private',
+	'Pending review' = 'pending',
+};
+
+enum StateActions {
+	'Internal draft' = 'show_internally',
+	'Externally visible' = 'publish_externally',
+	'Internally published' = 'publish_internally',
+	'Internally restricted' = 'publish_restricted',
+	'Private' = 'hide',
+	'Pending review' = 'submit'
+};
+
+enum StateColor {
+	internal = 'white',
+	external = '#74AE0B',
+	internally_published = 'white',
+	internally_restricted = 'white',
+	private = 'red',
+	pending = '#FFA500',
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	if (vscode.workspace.workspaceFolders !== undefined) {
 		let cookies: CookieStore = {};
@@ -22,21 +58,82 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (Object.keys(cookies).length) {
 			const ploneFS = new PloneFS(cookies);
 			context.subscriptions.push(vscode.workspace.registerFileSystemProvider('plone', ploneFS, { isCaseSensitive: false }));
+
+			const stateStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+			stateStatus.command = 'plonefs.changeState';
+			stateStatus.tooltip = 'Change state';
+
+			async function showChangeState(entry: Entry) {
+				const stateText = await vscode.window.showQuickPick(Object.keys(StateActions), {
+					placeHolder: 'Choose State',
+					canPickMany: false,
+				}) as keyof typeof StateActions | undefined;
+				if (stateText && stateText !== StateText[entry.state!]) {
+					const cookie = ploneFS.getRoot(entry.uri).cookie;
+					const response = await get({
+						host: entry.uri.authority,
+						path: entry.uri.path + '/content_status_modify?workflow_action=' + StateActions[stateText],
+						headers: { cookie },
+					});
+					if (response.statusCode === 302) {
+						entry.state = TextState[stateText];
+						// if the above took too long, user might have changed active text editor
+						if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri === entry.uri) {
+							setStateStatus(entry);
+						}
+					}
+					else {
+						vscode.window.showErrorMessage(`Unable to set state to "${stateText}"\n${response.statusCode}: ${response.statusMessage}`);
+					}
+				}
+			}
+
+			function setStateStatus(entry: Entry) {
+				stateStatus.text = 'State: ' + StateText[entry.state!];
+				stateStatus.color = StateColor[entry.state!];
+				stateStatus.show();
+			}
+
+			context.subscriptions.push(
+				vscode.commands.registerCommand(
+					'plonefs.changeState',
+					async () => {
+						if (!vscode.window.activeTextEditor) {
+							return stateStatus.hide();
+						}
+						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
+						if (entry instanceof File /* or image */) {
+							return stateStatus.hide();
+						}
+						showChangeState(entry);
+					},
+				)
+			);
 			// to VS Code Plone Documents and Plone Files are both TextDocuments
 			// so set Plone Documents to be HTML and Files to be whatever we determined them to be
 			// (unless VS Code already figured it out)
 			context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(async doc => {
+				const entry: Entry = await ploneFS.stat(doc.uri);
 				if (doc.languageId === 'plaintext') {
-					const entry: Entry = await ploneFS.stat(doc.uri);
 					if (entry instanceof Document) {
 						vscode.languages.setTextDocumentLanguage(doc, 'html');
-					}
-					else if (entry instanceof File && entry.language && entry.language !== 'plaintext') {
-						vscode.languages.setTextDocumentLanguage(doc, entry.language);
 					}
 					else if (entry instanceof LocalCss) {
 						vscode.languages.setTextDocumentLanguage(doc, 'css');
 					}
+					else if (entry instanceof File && entry.language && entry.language !== 'plaintext') {
+						vscode.languages.setTextDocumentLanguage(doc, entry.language);
+					}
+				}
+			}));
+
+			context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(async (textEditor: vscode.TextEditor | undefined) => {
+				if (textEditor) {
+					const entry: Entry = await ploneFS.stat(textEditor.document.uri);
+					setStateStatus(entry);
+				}
+				else {
+					stateStatus.hide();
 				}
 			}));
 
@@ -102,7 +199,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 						const response = await get({
 							host: entry.uri.authority,
-							path: uri.path + '/@@iterate_control/checkin_allowed',
+							path: entry.uri.path + '/@@iterate_control/checkin_allowed',
 							headers: { cookie },
 						});
 						const buffer = await getBuffer(response);
@@ -136,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						setSetting(entry, 'description');
 						break;
 					case Picks.checkOut:
-						let tryCheckOut: string | undefined = 'try';
+						let tryCheckOut: string | undefined = 'try again';
 						while (tryCheckOut) {
 							try {
 								// TODO: avoid cast
@@ -148,21 +245,21 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 						break;
 					case Picks.checkIn:
-						let tryCheckin: string | undefined = 'try';
-						let checkin_message: string | undefined = '';
+						let tryCheckin: string | undefined = 'try again';
+						let message: string | undefined;
 						while (tryCheckin) {
 							try {
-								checkin_message = await vscode.window.showInputBox({
+								message = await vscode.window.showInputBox({
 									prompt: 'Check-in Message',
-									value: checkin_message,
+									value: message,
 									ignoreFocusOut: true,
 								});
-								if (checkin_message === undefined) {
+								if (message === undefined) {
 									tryCheckin = await vscode.window.showInformationMessage('Cancelled Check-in', 'try again');
 								}
 								else {
 									// TODO: avoid cast
-									tryCheckin = await ploneFS.checkIn(entry as Document, checkin_message);
+									tryCheckin = await ploneFS.checkIn(entry as Document, message);
 								}
 							}
 							catch (error) {
@@ -171,38 +268,10 @@ export async function activate(context: vscode.ExtensionContext) {
 						}
 						break;
 					case Picks.cancelCheckOut:
-						await ploneFS.cancelCheckOut(entry as Document);
+						ploneFS.cancelCheckOut(entry as Document);
 						break;
 					case Picks.setState:
-						enum States {
-							'Internal draft' = 'show_internally',
-							'Externally visible' = 'publish_externally',
-							'Internally published' = 'publish_internally',
-							'Internally restricted' = 'publish_restricted',
-							'Private' = 'hide',
-							'Pending review' = 'submit',
-						};
-						const state = await vscode.window.showQuickPick(Object.keys(States), {
-							placeHolder: 'Choose State',
-							canPickMany: false,
-							ignoreFocusOut: true,
-						}) as keyof typeof States | undefined;
-						if (state) {
-							if (!cookie) {
-								cookie = ploneFS.getRoot(entry.uri).cookie;
-							}
-							const response = await get({
-								host: entry.uri.authority,
-								path: uri.path + '/content_status_modify?workflow_action=' + States[state],
-								headers: { cookie },
-							});
-							if (response.statusCode === 302) {
-								vscode.window.showInformationMessage(`State set to "${state}"`);
-							}
-							else {
-								vscode.window.showErrorMessage(`Unable to set state to "${state}"\n${response.statusCode}: ${response.statusMessage}`);
-							}
-						}
+						showChangeState(entry);
 						break;
 					case Picks.localCSS:
 						if (entry instanceof Folder) {

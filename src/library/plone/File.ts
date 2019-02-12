@@ -5,9 +5,11 @@ import { RequestOptions } from 'https';
 
 export default class File extends BaseFile {
 	language: string;
+	state: null;
 
 	constructor(uri: vscode.Uri, exists = false) {
 		super(uri, exists);
+		this.state = null;
 		this.language = 'plaintext';
 	}
 
