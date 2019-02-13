@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
-import { PloneObject, Document, NewsItem, File, LocalCss, Entry, Event, Topic } from '.';
+import { PloneObject, Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss } from '.';
 import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
-import { State } from './PloneObject';
 
 type Listing = {
 	parent_url: string;
@@ -18,14 +17,14 @@ type Item = {
 	title: string;
 	url: string;
 	is_folderish: boolean;
-	review_state: State;
+	review_state: State | null;
 	icon: string;
 	portal_type: 'Folder' | 'Document' | 'News Item' | 'Event' | 'Topic';
 	id: string;
 	normalized_type: 'folder' | 'document' | 'news-item' | 'event' | 'topic' | 'file';
 };
 
-export default class Folder extends PloneObject {
+export default class Folder extends PloneObject implements WithState, WithLocalCss {
 	entries: Map<string, Entry>;
 	loadingEntries: boolean;
 	loadingEntriesPromise: Promise<boolean>;
@@ -41,8 +40,14 @@ export default class Folder extends PloneObject {
 		}
 	}
 
+	state: State;
+	hasLocalCss: boolean;
+	localCss: LocalCss | undefined;
+
 	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
 		super(uri, exists);
+
+		this.state = 'internal';
 
 		this.loadingEntries = false;
 		this.loadedEntries = false;
@@ -59,10 +64,11 @@ export default class Folder extends PloneObject {
 	}
 
 	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
-		if (!this.isRoot) {
-			return super.saveSetting(settingName, cookie);
+		if (this.isRoot) {
+			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
-		throw vscode.FileSystemError.Unavailable('cannot edit root folder');
+		return super.saveSetting(settingName, cookie);
+		
 		// TODO: title and description at the root require an authenticator
 		// not worth the trouble right now
 		// switch (settingName) {
@@ -73,14 +79,6 @@ export default class Folder extends PloneObject {
 		// }
 	}
 
-	load(cookie: Cookie): Promise<boolean> {
-		if (this.loading) {
-			return this.loadingPromise;
-		}
-		this.loading = true;
-		return this.loadingPromise = this._load(cookie);
-	}
-
 	loadEntries(cookie: Cookie): Promise<boolean> {
 		if (this.loadingEntries) {
 			return this.loadingEntriesPromise;
@@ -89,7 +87,7 @@ export default class Folder extends PloneObject {
 		return this.loadingEntriesPromise = this._loadEntries(cookie);
 	}
 
-	private async _load(cookie: Cookie): Promise<boolean> {
+	protected async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
 		this.isRoot ? await this._loadRoot(cookie) : await this._loadExternal(cookie);
 		this.loading = false;
@@ -107,17 +105,7 @@ export default class Folder extends PloneObject {
 	}
 
 	private async _loadExternal(cookie: Cookie): Promise<boolean> {
-		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
-		const response = await get({
-			host: this.uri.authority,
-			path: externalEditPath,
-			headers: { cookie },
-		});
-		if (response.statusCode !== 200) {
-			this.loading = false;
-			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
-		}
-		const buffer = await getBuffer(response);
+		const buffer = await this._loadExternalBuffer(cookie);
 		this.parseExternalEdit(buffer);
 		return true;
 	}
@@ -126,7 +114,7 @@ export default class Folder extends PloneObject {
 		this.loadedEntries = false;
 		const classes = {
 			'folder': Folder,
-			'document': Document,
+			'document': Page,
 			'news-item': NewsItem,
 			'event': Event,
 			'topic': Topic,
@@ -150,6 +138,7 @@ export default class Folder extends PloneObject {
 			if (item.normalized_type in classes) {
 				const entry = new classes[item.normalized_type](vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true);
 				entry.state = item.review_state;
+				entry.description = item.description;
 				this.entries.set(item.id, entry);
 			}
 		}

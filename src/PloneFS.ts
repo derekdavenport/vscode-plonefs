@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { get, post, copyMatch } from './library/util';
 
-import { Folder, BaseFile, Document, File, Entry } from './library/plone';
+import { Folder, BaseFile, Page, File, Entry, isWithLocalCss } from './library/plone';
 import { RequestOptions } from 'https';
 
 export type Credentials = {
@@ -111,6 +111,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean, overwrite: boolean }): Promise<void> {
 		let file = await this._lookupAsFile(uri, true);
+		const events: vscode.FileChangeEvent[] = [];
 		if (!file && !options.create) {
 			throw vscode.FileSystemError.FileNotFound(uri);
 		}
@@ -122,9 +123,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			let parent = await this._lookupParentFolder(uri);
 			// files will have an extension
 			const extname = path.posix.extname(uri.path);
-			file = extname ? new File(uri) : new Document(uri);
+			file = extname ? new File(uri) : new Page(uri);
 			parent.entries.set(basename, file);
-			this._fireSoon({ type: vscode.FileChangeType.Created, uri });
+			events.push({ type: vscode.FileChangeType.Created, uri });
 		}
 		file.mtime = Date.now();
 		file.size = content.byteLength;
@@ -134,7 +135,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (!saved) {
 			throw vscode.FileSystemError.Unavailable(uri);
 		}
-		this._fireSoon({ type: vscode.FileChangeType.Changed, uri });
+		events.push({ type: vscode.FileChangeType.Changed, uri })
+		this._fireSoon(...events);
 	}
 
 	// --- manage files/directories
@@ -258,7 +260,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
 	}
 
-	async checkOut<D extends Document>(document: D): Promise<undefined> {
+	async checkOut<D extends Page>(document: D): Promise<undefined> {
 		const response = await get({
 			host: document.uri.authority,
 			path: document.uri.path + '/@@content-checkout',
@@ -285,7 +287,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return;
 	}
 
-	async cancelCheckOut(document: Document): Promise<void> {
+	async cancelCheckOut(document: Page): Promise<void> {
 		const cookie = this.getRoot(document.uri).cookie;
 		const response = await post(
 			{
@@ -306,7 +308,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		);
 	}
 
-	async checkIn<D extends Document>(document: D, checkin_message: string): Promise<undefined> {
+	async checkIn<D extends Page>(document: D, checkin_message: string): Promise<undefined> {
 		const cookie = this.getRoot(document.uri).cookie;
 		const response = await post(
 			{
@@ -381,7 +383,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	private async _lookup(uri: vscode.Uri, silent: boolean): Promise<Entry | undefined>;
 	private async _lookup(uri: vscode.Uri, silent: boolean): Promise<Entry | undefined> {
 		let returnLocalCss = false;
-		if (uri.query === 'localCss' && /[/.]local\.css/.test(uri.path)) {
+		const localCssRegEx = /[/.]local\.css/;
+		if (uri.query === 'localCss' && localCssRegEx.test(uri.path)) {
 			uri = uri.with({ path: uri.path.slice(0, -10), query: '' });
 			returnLocalCss = true;
 		}
@@ -410,7 +413,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			}
 			entry = child;
 		}
-		if (returnLocalCss) {
+		if (returnLocalCss && isWithLocalCss(entry)) {
 			return entry.localCss;
 		}
 		return entry;

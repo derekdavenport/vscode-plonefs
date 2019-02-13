@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { post } from '../util';
-import { BaseFile } from '.';
+import { post, Mode, linefeed } from '../util';
 import { RequestOptions } from 'https';
+import { BaseFile } from '.';
 
 export default class File extends BaseFile {
 	language: string;
@@ -31,6 +31,19 @@ export default class File extends BaseFile {
 			}
 		}
 		return loaded;
+	}
+
+	// File has no Python section
+	protected parseExternalEdit(buffer: Buffer): Buffer {
+		this.settings.clear();
+		const modeSwitch = Buffer.from([linefeed, linefeed]);
+		const headerStartIndex = 0;
+		const headerEndIndex = buffer.indexOf(modeSwitch);
+		const contentStartIndex = headerEndIndex + modeSwitch.length;
+		const headerBuffer = buffer.slice(headerStartIndex, headerEndIndex);
+		const contentBuffer = buffer.slice(contentStartIndex);
+		this.parseExternalEditSection(headerBuffer, Mode.Header);
+		return contentBuffer;
 	}
 
 	// load(cookie: string): Promise<boolean> {

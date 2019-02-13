@@ -15,21 +15,40 @@ Open Plone sites in Visual Studio Code
 * Enter password
 * The site will be added to Visual Studio Code's Explorer
 
-### Editing Title / Description (and Local CSS if installed)
+### Editing Title / Description / State (and Local CSS if installed)
 
 * Right-click an entry in Visual Studio Code Explorer
-* Select "More Plone Options"
+* Select "Plone Options"
 * A drop down will appear with options you can edit
 * If selected, Local CSS wil open as a document
 
-### Working Copies
+Note: Files do not have State. The Title and State are also displayed on the status bar for the current active document and can be edited by clicking on them.
 
-### Settings State
+### Creating Working Copies
+
+* Right-click a Document in Visual Studio Code Explorer
+* Select "Plone Options"
+* If the Document is not a Working Copy, there will be an option for "Check Out"
+* Select "Check Out"
+* The Working Copy starting with the name "copy_of_" will appear in the current folder
+
+Note: Folders, Files, and Collections cannot be checked out.
+
+### Checking in Working Copies
+
+* Right-click a Working Copy in Visual Studio Code Explorer
+* Select "Plone Options"
+* If the Document is a Working Copy, there will be options for "Check In" and "Cancel Check Out"
+* If you select "Check In" you will need to supply a check in message and press Enter / Return
 
 ## Known bugs / missing features
 
-* cannot edit site root Title / Description
+* Title / Description changes only show on View page
+* cannot edit file Description
+* no support for "Exclude from Navigation" setting
+* checking in a working copy causes the original document to be marked dirty (unsaved) even though it is saved
+* cannot edit site root folder Title / Description
 * cannot login again after cookie expires (workaround: close and reopen Visual Studio Code)
 * cannot delete
 * no support for portlets
-* no edit history (source control) https://code.visualstudio.com/docs/extensionAPI/api-scm
+* no support for edit history ([source control](https://code.visualstudio.com/docs/extensionAPI/api-scm))

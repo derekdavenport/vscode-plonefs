@@ -1,4 +1,4 @@
-import { Document } from '.';
+import { Page } from '.';
 
-export default class Event extends Document {
+export default class Event extends Page {
 }

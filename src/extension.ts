@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore, Cookie } from './PloneFS';
-import { Document, File, PloneObject, LocalCss, Folder, Entry } from './library/plone';
+import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss } from './library/plone';
 import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
@@ -42,6 +42,42 @@ enum StateColor {
 	pending = '#FFA500',
 }
 
+enum Options {
+	title,
+	description,
+	setState,
+	checkOut,
+	cancelCheckOut,
+	checkIn,
+	openLocalCSS,
+};
+interface SetSettingAction {
+	type: Options.title | Options.description,
+	entry: Entry,
+}
+interface SetStateAction {
+	type: Options.setState,
+	entry: Folder | Document,
+}
+interface CheckOutAction {
+	type: Options.checkOut,
+	entry: Page,
+}
+interface CancelCheckOutAction {
+	type: Options.cancelCheckOut,
+	entry: Page,
+}
+interface CheckInAction {
+	type: Options.checkIn,
+	entry: Page,
+}
+interface OpenLocalCssAction {
+	type: Options.openLocalCSS,
+	entry: Folder | Document,
+}
+type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction;
+
+
 export async function activate(context: vscode.ExtensionContext) {
 	if (vscode.workspace.workspaceFolders !== undefined) {
 		let cookies: CookieStore = {};
@@ -63,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			stateStatus.command = 'plonefs.changeState';
 			stateStatus.tooltip = 'Change state';
 
-			async function showChangeState(entry: Entry) {
+			async function showChangeState(entry: Folder | Document) {
 				const stateText = await vscode.window.showQuickPick(Object.keys(StateActions), {
 					placeHolder: 'Choose State',
 					canPickMany: false,
@@ -77,7 +113,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					});
 					if (response.statusCode === 302) {
 						entry.state = TextState[stateText];
-						// if the above took too long, user might have changed active text editor
+						// make sure this is still the active document
 						if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri === entry.uri) {
 							setStateStatus(entry);
 						}
@@ -88,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
-			function setStateStatus(entry: Entry) {
+			function setStateStatus(entry: Folder | Document) {
 				stateStatus.text = 'State: ' + StateText[entry.state!];
 				stateStatus.color = StateColor[entry.state!];
 				stateStatus.show();
@@ -102,13 +138,38 @@ export async function activate(context: vscode.ExtensionContext) {
 							return stateStatus.hide();
 						}
 						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
-						if (entry instanceof File /* or image */) {
-							return stateStatus.hide();
+						if (isWithState(entry)) {
+							showChangeState(entry);
 						}
-						showChangeState(entry);
+						else {
+							stateStatus.hide();
+						}
 					},
 				)
 			);
+
+			const titleStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1001);
+			titleStatus.command = 'plonefs.changeTitle';
+			titleStatus.tooltip = 'Change title';
+
+			function setTitleStatus(entry: Entry) {
+				titleStatus.text = 'Title: ' + entry.settings.get('title')!.toString();
+				titleStatus.show();
+			}
+
+			context.subscriptions.push(
+				vscode.commands.registerCommand(
+					'plonefs.changeTitle',
+					async () => {
+						if (!vscode.window.activeTextEditor) {
+							return titleStatus.hide();
+						}
+						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
+						setSetting(entry, 'title');
+					},
+				)
+			);
+
 			// to VS Code Plone Documents and Plone Files are both TextDocuments
 			// so set Plone Documents to be HTML and Files to be whatever we determined them to be
 			// (unless VS Code already figured it out)
@@ -127,76 +188,81 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}));
 
-			context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(async (textEditor: vscode.TextEditor | undefined) => {
+			context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(async (textEditor?: vscode.TextEditor) => {
 				if (textEditor) {
 					const entry: Entry = await ploneFS.stat(textEditor.document.uri);
-					setStateStatus(entry);
+					if (isWithState(entry)) {
+						setStateStatus(entry);
+					}
+					else {
+						stateStatus.hide();
+					}
+					setTitleStatus(entry);
 				}
 				else {
 					stateStatus.hide();
+					titleStatus.hide();
 				}
 			}));
 
 			async function setSetting(entry: Entry, settingName: string) {
-				if (entry instanceof PloneObject) {
-					let cookie: Cookie | undefined;
-					if (!entry.loaded) {
-						cookie = ploneFS.getRoot(entry.uri).cookie;
-						await entry.load(cookie);
+				let cookie: Cookie | undefined;
+				if (!entry.loaded) {
+					cookie = ploneFS.getRoot(entry.uri).cookie;
+					await entry.load(cookie);
+				}
+				const oldBuffer = entry.settings.get(settingName);
+				if (!oldBuffer) {
+					vscode.window.showErrorMessage('Unable to load ' + settingName);
+					throw vscode.FileSystemError.Unavailable('Unable to load ' + settingName);
+				}
+				const newValue = await vscode.window.showInputBox({
+					prompt: 'Set ' + settingName,
+					// currently vscode only allows single-line input
+					value: oldBuffer.toString().replace(/\r\n/g, '\\n'),
+					ignoreFocusOut: false,
+				});
+				// cancelled
+				if (newValue === undefined) {
+					return;
+				}
+				// convert single-line input to multi-line
+				entry.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
+				// TODO: consider moving cookie to PloneObject instance
+				if (!cookie) {
+					cookie = ploneFS.getRoot(entry.uri).cookie;
+				}
+				const success = await entry.saveSetting(settingName, cookie);
+				if (success) {
+					vscode.window.showInformationMessage(`Set ${settingName}: ${newValue}`);
+					if (settingName === 'title') {
+						setTitleStatus(entry);
 					}
-					const oldBuffer = entry.settings.get(settingName);
-					if (!oldBuffer) {
-						vscode.window.showErrorMessage('Unable to load ' + settingName);
-						throw vscode.FileSystemError.Unavailable('Unable to load ' + settingName);
-					}
-					const newValue = await vscode.window.showInputBox({
-						prompt: 'Set ' + settingName,
-						// currently vscode only allows single-line input
-						value: oldBuffer.toString().replace(/\r\n/g, '\\n'),
-						ignoreFocusOut: true,
-					});
-					// cancelled
-					if (newValue === undefined) {
-						return;
-					}
-					// convert single-line input to multi-line
-					entry.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
-					// TODO: consider moving cookie to PloneObject instance
-					if (!cookie) {
-						cookie = ploneFS.getRoot(entry.uri).cookie;
-					}
-					entry.saveSetting(settingName, cookie);
-
 				}
 			}
 
-			async function settingsMenu(uri: vscode.Uri): Promise<void> {
-				enum Picks {
-					title = 'Edit Title',
-					description = 'Edit Description',
-					setState = 'Set State',
-					checkOut = 'Check Out',
-					cancelCheckOut = 'Cancel Check Out',
-					checkIn = 'Check In',
-					localCSS = 'Edit Local CSS',
-				};
+			async function optionsMenu(uri: vscode.Uri): Promise<void> {
 				const entry = await ploneFS.stat(uri);
-				let cookie;
+				const cookie = ploneFS.getRoot(entry.uri).cookie;
+				await entry.load(cookie);
+				// map readable text to pick option
+				const optionsToAction: { [option: string]: OptionsMenuAction } = {};
 				// disable title/description for root until supported
-				let items: Picks[] = (entry instanceof Folder && entry.isRoot) ? [] : [Picks.title, Picks.description];
-
-				// no state on files (or images if ever supported)
-				if (!(entry instanceof File)) {
-					items.push(Picks.setState)
+				if (!(entry instanceof Folder && entry.isRoot)) {
+					optionsToAction['Title: ' + entry.settings.get('title')] = { type: Options.title, entry };
+					// TODO: support file description
+					if (!(entry instanceof File)) {
+						optionsToAction['Description: ' + entry.settings.get('description')] = { type: Options.description, entry };
+					}
+				}
+				if (isWithState(entry)) {
+					optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
 				}
 
-				if (entry instanceof Document) {
+				if (entry instanceof Page) {
 					const match = copyMatch(entry.name);
 					let isWorkingCopy = false;
 					if (match) {
-						if (!cookie) {
-							cookie = ploneFS.getRoot(entry.uri).cookie;
-						}
 						const response = await get({
 							host: entry.uri.authority,
 							path: entry.uri.path + '/@@iterate_control/checkin_allowed',
@@ -204,47 +270,50 @@ export async function activate(context: vscode.ExtensionContext) {
 						});
 						const buffer = await getBuffer(response);
 						if (buffer.equals(Buffer.from('True'))) {
-							items.push(Picks.checkIn);
-							items.push(Picks.cancelCheckOut);
+							optionsToAction['Check In'] = { type: Options.checkIn, entry };
+							optionsToAction['Cancel Check In'] = { type: Options.cancelCheckOut, entry };
 							isWorkingCopy = true;
 						}
 					}
 					if (!isWorkingCopy) {
-						items.push(Picks.checkOut);
+						optionsToAction['Check Out'] = { type: Options.checkOut, entry };
 					}
 				}
-				if (entry.hasLocalCss) {
-					items.push(Picks.localCSS);
+				if (isWithLocalCss(entry) && entry.hasLocalCss) {
+					optionsToAction['Open Local CSS'] = { type: Options.openLocalCSS, entry };
 				}
-				const pick = await vscode.window.showQuickPick(items, {
-					placeHolder: 'More Plone Options',
+				const option = await vscode.window.showQuickPick(Object.keys(optionsToAction), {
+					placeHolder: 'Plone Options',
 					canPickMany: false,
-					ignoreFocusOut: true,
-				}) as Picks | undefined;
+					ignoreFocusOut: false,
+				});
 				// cancelled
-				if (pick === undefined) {
+				if (option === undefined) {
 					return;
 				}
-				switch (pick) {
-					case Picks.title:
-						setSetting(entry, 'title');
+				optionsReducer(optionsToAction[option]);
+			}
+
+			async function optionsReducer(action: OptionsMenuAction) {
+				switch (action.type) {
+					case Options.title:
+						setSetting(action.entry, 'title');
 						break;
-					case Picks.description:
-						setSetting(entry, 'description');
+					case Options.description:
+						setSetting(action.entry, 'description');
 						break;
-					case Picks.checkOut:
+					case Options.checkOut:
 						let tryCheckOut: string | undefined = 'try again';
 						while (tryCheckOut) {
 							try {
-								// TODO: avoid cast
-								tryCheckOut = await ploneFS.checkOut(entry as Document);
+								tryCheckOut = await ploneFS.checkOut(action.entry);
 							}
 							catch (error) {
 								tryCheckOut = await vscode.window.showErrorMessage('Unable to check out. It may already be checked out\n' + error.message, 'try again');
 							}
 						}
 						break;
-					case Picks.checkIn:
+					case Options.checkIn:
 						let tryCheckin: string | undefined = 'try again';
 						let message: string | undefined;
 						while (tryCheckin) {
@@ -258,8 +327,7 @@ export async function activate(context: vscode.ExtensionContext) {
 									tryCheckin = await vscode.window.showInformationMessage('Cancelled Check-in', 'try again');
 								}
 								else {
-									// TODO: avoid cast
-									tryCheckin = await ploneFS.checkIn(entry as Document, message);
+									tryCheckin = await ploneFS.checkIn(action.entry, message);
 								}
 							}
 							catch (error) {
@@ -267,29 +335,30 @@ export async function activate(context: vscode.ExtensionContext) {
 							}
 						}
 						break;
-					case Picks.cancelCheckOut:
-						ploneFS.cancelCheckOut(entry as Document);
+					case Options.cancelCheckOut:
+						ploneFS.cancelCheckOut(action.entry);
 						break;
-					case Picks.setState:
-						showChangeState(entry);
+					case Options.setState:
+						showChangeState(action.entry);
 						break;
-					case Picks.localCSS:
-						if (entry instanceof Folder) {
+					case Options.openLocalCSS:
+						const uri = action.entry.uri;
+						if (action.entry instanceof Folder) {
 							vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
 						}
-						else if (entry instanceof Document) {
+						else {
 							vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
 						}
 						break;
 					default:
-						const never: never = pick;
+						const never: never = action;
 						throw new Error('unexpected Plone setting: ' + never);
 				}
 			}
 
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.editSettings',
-				(uri: vscode.Uri) => settingsMenu(uri),
+				(uri: vscode.Uri) => optionsMenu(uri),
 			));
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.debug.expireCookie',

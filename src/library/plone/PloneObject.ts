@@ -1,38 +1,14 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { get, post, getBuffer } from '../util';
+import { get, post, getBuffer, linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
 import { RequestOptions } from 'https';
-import { LocalCss } from '.';
 import { Cookie } from '../../PloneFS';
-
-enum Mode {
-	Header,
-	Python,
-	Content,
-}
-const linefeed = 10; // '\n'
-const creturn = 13; // '\r'
-const colon = 58; // ':'
-const indent = '  ';
-// between every line in multiline values
-const blankLine = '  \r\n  ';
-// except these keys
-const singleLineKeys = ['locallyAllowedTypes', 'immediatelyAddableTypes'];
-const endOfLineSequences = {
-	[Mode.Header]: Buffer.from([linefeed]),
-	[Mode.Python]: Buffer.from([creturn, linefeed]),
-};
-// between key and value
-const valueStartOffsets = {
-	[Mode.Header]: 1, // ':'
-	[Mode.Python]: 2, // ': '
-};
-
-export type State = 'internal' | 'external' | 'internally_published' | 'internally_restricted' | 'private' | 'pending' | null;
+import { State } from '.';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	static readonly savedText = Buffer.from('saved');
+	static readonly type_name: string | undefined;
 
 	type: vscode.FileType;
 	ctime: number;
@@ -56,36 +32,62 @@ export default abstract class PloneObject implements vscode.FileStat {
 	get name() {
 		return this._name;
 	}
+	description: string;
 
 	loading: boolean;
 	loaded: boolean;
 	loadingPromise: Promise<boolean>;
-	// TODO: write load here that handles setting loading (false when fail) and return promise
-	// abstract protected _load 
-	abstract load(cookie: string): Promise<boolean>;
+	
+	protected abstract _load(cookie: string): Promise<boolean>;
 
 	exists: boolean;
 
-	state: State;
+	state: State | null;
 
 	settings: Map<string, Buffer>;
-	hasLocalCss = false;
-	localCss: LocalCss | undefined;
 
 	constructor(uri: vscode.Uri, exists = false) {
 		this.type = vscode.FileType.Unknown;
 		this.ctime = this.mtime = Date.now();
 		this.size = 0;
 		this.uri = uri;
+		// TODO: move title and description out of settings
+		this.description = '';
 
 		this.loading = false;
 		this.loaded = false;
 		this.loadingPromise = Promise.resolve(false);
 
-		this.state = 'internal';
+		this.state = null;
 
 		this.exists = exists;
 		this.settings = new Map<string, Buffer>();
+	}
+
+	load(cookie: string): Promise<boolean> {
+		if (this.loading) {
+			return this.loadingPromise;
+		}
+		this.loading = true;
+		return this.loadingPromise = this._load(cookie);
+	}
+
+	protected async _loadExternalBuffer(cookie: string): Promise<Buffer> {
+		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
+		const response = await get({
+			host: this.uri.authority,
+			path: externalEditPath,
+			headers: { cookie },
+		});
+		if (response.statusCode === 302) {
+			this.loading = false;
+			throw vscode.FileSystemError.NoPermissions(this.uri);
+		}
+		else if (response.statusCode !== 200) {
+			this.loading = false;
+			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
+		}
+		return getBuffer(response);
 	}
 
 	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
@@ -113,7 +115,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	async getNewSavePath(cookie: string) {
 		const response = await get({
 			host: this.uri.authority,
-			path: this.path.dir + '/createObject?type_name=' + this.constructor.name,
+			path: this.path.dir + '/createObject?type_name=' + ((this.constructor as typeof PloneObject).type_name || this.constructor.name),
 			headers: { cookie },
 		});
 		if (response.statusCode !== 302) {
@@ -136,7 +138,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		const headerStartIndex = 0;
 		const headerEndIndex = buffer.indexOf(modeSwitch);
 		const pythonStartIndex = headerEndIndex + modeSwitch.length;
-		const pythonEndIndex = buffer.lastIndexOf(modeSwitch);
+		const pythonEndIndex = buffer.indexOf(modeSwitch, pythonStartIndex); // buffer.lastIndexOf(modeSwitch);
 		const contentStartIndex = pythonEndIndex + modeSwitch.length;
 		const headerBuffer = buffer.slice(headerStartIndex, headerEndIndex);
 		const pythonBuffer = buffer.slice(pythonStartIndex, pythonEndIndex);
@@ -146,7 +148,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		return contentBuffer;
 	}
 
-	private parseExternalEditSection(buffer: Buffer, mode: Mode.Header | Mode.Python) {
+	protected parseExternalEditSection(buffer: Buffer, mode: Mode.Header | Mode.Python) {
 		let lineStart: number, lineEnd: number, nextLineStart = 0;
 		let key: string | undefined, value: Buffer;
 		const eol = endOfLineSequences[mode];
@@ -169,6 +171,12 @@ export default abstract class PloneObject implements vscode.FileStat {
 				lineEnd = buffer.indexOf(eol, lineStart);
 				nextLineStart = lineEnd + eol.length;
 				value = Buffer.concat([value, eol, buffer.slice(lineStart, lineEnd)]);
+			}
+			if (key === 'title') {
+
+			}
+			else if (key === 'description') {
+				this.description = value.toString();
 			}
 			this.settings.set(key, value);
 		}

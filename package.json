@@ -30,7 +30,7 @@
 			},
 			{
 				"command": "plonefs.editSettings",
-				"title": "More Plone Options",
+				"title": "Plone Options",
 				"category": "PloneFS"
 			},
 			{
