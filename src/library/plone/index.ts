@@ -11,17 +11,33 @@ import LocalCss from './LocalCss';
 
 export { PloneObject, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss };
 export type Entry = Folder | BaseFile | Document;
-export type State = 'internal' | 'external' | 'internally_published' | 'internally_restricted' | 'private' | 'pending';
+
+export enum StateText {
+	internal = 'Internal draft',
+	external = 'Externally visible',
+	internally_published = 'Internally published',
+	internally_restricted = 'Internally restricted',
+	private = 'Private',
+	pending = 'Pending review',
+};
+
+export enum TextState {
+	'Internal draft' = 'internal',
+	'Externally visible' = 'external',
+	'Internally published' = 'internally_published',
+	'Internally restricted' = 'internally_restricted',
+	'Private' = 'private',
+	'Pending review' = 'pending',
+};
+
+export type State = keyof typeof StateText;
 
 export interface WithState {
 	state: State;
 }
 
-export type WithStateType = Folder | Document;
-export type WithLocalCssType = Folder | Document;
-
 export function isWithState(value: any): value is WithState {
-	return value instanceof Folder || value instanceof Document;
+	return typeof value !== 'undefined' && Object.keys(StateText).includes(value.state);
 }
 
 export interface WithLocalCss {
@@ -30,5 +46,5 @@ export interface WithLocalCss {
 }
 
 export function isWithLocalCss(value: any): value is WithLocalCss {
-	return value instanceof Folder || value instanceof Document;
+	return typeof value !== 'undefined' && typeof value.hasLocaCss === 'boolean';
 }

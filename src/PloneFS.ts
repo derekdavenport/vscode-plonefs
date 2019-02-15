@@ -119,11 +119,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			throw vscode.FileSystemError.FileExists(uri);
 		}
 		if (!file) {
+			// TODO: check for restricted name: location
 			let basename = path.posix.basename(uri.path);
 			let parent = await this._lookupParentFolder(uri);
 			// files will have an extension
 			const extname = path.posix.extname(uri.path);
 			file = extname ? new File(uri) : new Page(uri);
+			// TODO: do not add until save confirmed
 			parent.entries.set(basename, file);
 			events.push({ type: vscode.FileChangeType.Created, uri });
 		}
@@ -191,8 +193,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 		if (oldParent === newParent) {
 			// rename!
-			//entry.name = path.posix.basename(newUri.path);
-			entry.uri = newUri;
+			entry.name = path.posix.basename(newUri.path);
+			//entry.uri = newUri;
 			await entry.save(cookie);
 		}
 		else {
@@ -260,11 +262,11 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
 	}
 
-	async checkOut<D extends Page>(document: D): Promise<undefined> {
+	async checkOut<P extends Page>(page: P): Promise<undefined> {
 		const response = await get({
-			host: document.uri.authority,
-			path: document.uri.path + '/@@content-checkout',
-			headers: { cookie: this.getRoot(document.uri).cookie },
+			host: page.uri.authority,
+			path: page.uri.path + '/@@content-checkout',
+			headers: { cookie: this.getRoot(page.uri).cookie },
 		});
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
@@ -273,8 +275,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (!newUriValue) {
 			throw vscode.FileSystemError.Unavailable('could not create working copy');
 		}
-		const parent = await this._lookupParentFolder(document.uri);
-		const copy = Object.assign<D, D>(Object.create(Object.getPrototypeOf(document)), document);
+		const parent = await this._lookupParentFolder(page.uri);
+		const copy = Object.assign<P, P>(Object.create(Object.getPrototypeOf(page)), page);
 		copy.mtime = Date.now();
 		copy.uri = vscode.Uri.parse(newUriValue).with({ scheme: 'plone' });
 		parent.entries.set(copy.path.base, copy);
@@ -287,12 +289,12 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return;
 	}
 
-	async cancelCheckOut(document: Page): Promise<void> {
-		const cookie = this.getRoot(document.uri).cookie;
+	async cancelCheckOut(page: Page): Promise<void> {
+		const cookie = this.getRoot(page.uri).cookie;
 		const response = await post(
 			{
-				host: document.uri.authority,
-				path: document.uri.path + '/@@content-cancel-checkout',
+				host: page.uri.authority,
+				path: page.uri.path + '/@@content-cancel-checkout',
 				headers: { cookie },
 			},
 			{
@@ -304,16 +306,16 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 
 		this._fireSoon(
-			{ type: vscode.FileChangeType.Deleted, uri: document.uri },
+			{ type: vscode.FileChangeType.Deleted, uri: page.uri },
 		);
 	}
 
-	async checkIn<D extends Page>(document: D, checkin_message: string): Promise<undefined> {
-		const cookie = this.getRoot(document.uri).cookie;
+	async checkIn<P extends Page>(page: P, checkin_message: string): Promise<undefined> {
+		const cookie = this.getRoot(page.uri).cookie;
 		const response = await post(
 			{
-				host: document.uri.authority,
-				path: document.uri.path + '/@@content-checkin',
+				host: page.uri.authority,
+				path: page.uri.path + '/@@content-checkin',
 				headers: { cookie },
 			},
 			{
@@ -331,7 +333,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (originalDocument) {
 			const range = new vscode.Range(originalDocument.lineAt(0).range.start, originalDocument.lineAt(originalDocument.lineCount - 1).range.end);
 			const workspaceEdit = new vscode.WorkspaceEdit();
-			workspaceEdit.set(originalUri, [new vscode.TextEdit(range, document.data.toString())]);
+			workspaceEdit.set(originalUri, [new vscode.TextEdit(range, page.data.toString())]);
 			// this marks the file as dirty
 			await vscode.workspace.applyEdit(workspaceEdit);
 			// TODO: fake the save?
@@ -341,7 +343,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 		this._fireSoon(
 			{ type: vscode.FileChangeType.Changed, uri: originalUri },
-			{ type: vscode.FileChangeType.Deleted, uri: document.uri },
+			{ type: vscode.FileChangeType.Deleted, uri: page.uri },
 		);
 		return;
 	}

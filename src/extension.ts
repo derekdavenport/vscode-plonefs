@@ -1,28 +1,10 @@
 'use strict';
 import * as vscode from 'vscode';
-import PloneFS, { CookieStore, Cookie } from './PloneFS';
-import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss } from './library/plone';
+import PloneFS, { CookieStore } from './PloneFS';
+import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss, StateText, TextState } from './library/plone';
 import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
-
-enum StateText {
-	internal = 'Internal draft',
-	external = 'Externally visible',
-	internally_published = 'Internally published',
-	internally_restricted = 'Internally restricted',
-	private = 'Private',
-	pending = 'Pending review',
-};
-
-enum TextState {
-	'Internal draft' = 'internal',
-	'Externally visible' = 'external',
-	'Internally published' = 'internally_published',
-	'Internally restricted' = 'internally_restricted',
-	'Private' = 'private',
-	'Pending review' = 'pending',
-};
 
 enum StateActions {
 	'Internal draft' = 'show_internally',
@@ -32,7 +14,6 @@ enum StateActions {
 	'Private' = 'hide',
 	'Pending review' = 'submit'
 };
-
 enum StateColor {
 	internal = 'white',
 	external = '#74AE0B',
@@ -41,7 +22,6 @@ enum StateColor {
 	private = 'red',
 	pending = '#FFA500',
 }
-
 enum Options {
 	title,
 	description,
@@ -153,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			titleStatus.tooltip = 'Change title';
 
 			function setTitleStatus(entry: Entry) {
-				titleStatus.text = 'Title: ' + entry.settings.get('title')!.toString();
+				titleStatus.text = 'Title: ' + entry.title;
 				titleStatus.show();
 			}
 
@@ -205,36 +185,27 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}));
 
-			async function setSetting(entry: Entry, settingName: string) {
-				let cookie: Cookie | undefined;
-				if (!entry.loaded) {
-					cookie = ploneFS.getRoot(entry.uri).cookie;
-					await entry.load(cookie);
-				}
-				const oldBuffer = entry.settings.get(settingName);
-				if (!oldBuffer) {
-					vscode.window.showErrorMessage('Unable to load ' + settingName);
-					throw vscode.FileSystemError.Unavailable('Unable to load ' + settingName);
-				}
-				const newValue = await vscode.window.showInputBox({
+			async function setSetting(entry: Entry, settingName: 'title' | 'description') {
+				const oldValue = entry[settingName];
+				const singleLineValue = await vscode.window.showInputBox({
 					prompt: 'Set ' + settingName,
 					// currently vscode only allows single-line input
-					value: oldBuffer.toString().replace(/\r\n/g, '\\n'),
+					value: oldValue.replace(/\r\n/g, '\\n'),
 					ignoreFocusOut: false,
 				});
 				// cancelled
-				if (newValue === undefined) {
+				if (singleLineValue === undefined) {
 					return;
 				}
 				// convert single-line input to multi-line
-				entry.settings.set(settingName, Buffer.from(newValue.replace(/\\n/g, '\r\n')));
+				const newValue = singleLineValue.replace(/\\n/g, '\r\n')
+				entry[settingName] = newValue;
+				entry.settings.set(settingName, Buffer.from(newValue));
 				// TODO: consider moving cookie to PloneObject instance
-				if (!cookie) {
-					cookie = ploneFS.getRoot(entry.uri).cookie;
-				}
+				const cookie = ploneFS.getRoot(entry.uri).cookie;
 				const success = await entry.saveSetting(settingName, cookie);
 				if (success) {
-					vscode.window.showInformationMessage(`Set ${settingName}: ${newValue}`);
+					vscode.window.showInformationMessage(`Set ${settingName}: ${singleLineValue}`);
 					if (settingName === 'title') {
 						setTitleStatus(entry);
 					}
@@ -244,16 +215,16 @@ export async function activate(context: vscode.ExtensionContext) {
 			async function optionsMenu(uri: vscode.Uri): Promise<void> {
 				const entry = await ploneFS.stat(uri);
 				const cookie = ploneFS.getRoot(entry.uri).cookie;
-				await entry.load(cookie);
+				await entry.loadDetails(cookie);
 				// map readable text to pick option
 				const optionsToAction: { [option: string]: OptionsMenuAction } = {};
 				// disable title/description for root until supported
 				if (!(entry instanceof Folder && entry.isRoot)) {
-					optionsToAction['Title: ' + entry.settings.get('title')] = { type: Options.title, entry };
+					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
 					// TODO: support file description
-					if (!(entry instanceof File)) {
-						optionsToAction['Description: ' + entry.settings.get('description')] = { type: Options.description, entry };
-					}
+					//if (!(entry instanceof File)) {
+						optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
+					//}
 				}
 				if (isWithState(entry)) {
 					optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
@@ -419,7 +390,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined;
 		while (!uri) {
-			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})), 'new'];
+			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})).sort(), '＋ new'];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				canPickMany: false,

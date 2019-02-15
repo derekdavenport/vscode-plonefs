@@ -1,6 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as url from 'url';
 import { get, post, getBuffer, linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
@@ -32,12 +33,16 @@ export default abstract class PloneObject implements vscode.FileStat {
 	get name() {
 		return this._name;
 	}
+	set name(name: string) {
+		this._name = name;
+	}
+	title: string;
 	description: string;
 
 	loading: boolean;
 	loaded: boolean;
 	loadingPromise: Promise<boolean>;
-	
+
 	protected abstract _load(cookie: string): Promise<boolean>;
 
 	exists: boolean;
@@ -52,6 +57,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.size = 0;
 		this.uri = uri;
 		// TODO: move title and description out of settings
+		this.title = this.name;
 		this.description = '';
 
 		this.loading = false;
@@ -64,7 +70,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.settings = new Map<string, Buffer>();
 	}
 
-	load(cookie: string): Promise<boolean> {
+	load(cookie: Cookie): Promise<boolean> {
 		if (this.loading) {
 			return this.loadingPromise;
 		}
@@ -72,8 +78,27 @@ export default abstract class PloneObject implements vscode.FileStat {
 		return this.loadingPromise = this._load(cookie);
 	}
 
-	protected async _loadExternalBuffer(cookie: string): Promise<Buffer> {
-		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
+	async loadDetails(cookie: Cookie): Promise<void> {
+		type Details = {
+			title: string;
+			description: string;
+		};
+		const response = await get({
+			host: this.uri.authority,
+			path: this.uri.path + '/tinymce-jsondetails',
+			headers: { cookie },
+		});
+		if (response.statusCode !== 200) {
+			throw vscode.FileSystemError.Unavailable(this.uri);
+		}
+		const buffer = await getBuffer(response);
+		const details: Details = JSON.parse(buffer.toString());
+		this.title = details.title;
+		this.description = details.description;
+	}
+
+	protected async _loadExternalBuffer(cookie: Cookie): Promise<Buffer> {
+		const externalEditPath = this.path.dir + '/externalEdit_/' + this.path.base;
 		const response = await get({
 			host: this.uri.authority,
 			path: externalEditPath,
@@ -109,8 +134,30 @@ export default abstract class PloneObject implements vscode.FileStat {
 		};
 		const response = await post(options, postData);
 		const buffer = await getBuffer(response);
-		return buffer.equals(PloneObject.savedText);
+		const success = buffer.equals(PloneObject.savedText);
+		if (!success) {
+			throw vscode.FileSystemError.Unavailable(buffer.toString());
+		}
+		// changes will only show on View page unless reindexed
+		get({
+			host: this.uri.authority,
+			path: this.uri.path + '/reindexObject',
+			headers: { cookie },
+		});
+		return success;
 	}
+
+	// saveDescription(cookie: Cookie) {
+	// 	post({
+	// 		host: this.uri.authority,
+	// 		path: this.uri.path + '/setDescription',
+	// 		headers: { cookie },
+	// 	},
+	// 		{
+	// 			value: this.description,
+	// 		}
+	// 	);
+	// }
 
 	async getNewSavePath(cookie: string) {
 		const response = await get({
@@ -125,7 +172,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 		if (!location) {
 			throw vscode.FileSystemError.Unavailable('no location');
 		}
-		const locationPath = path.posix.parse(location);
+		const locationPathValue = url.parse(location).pathname;
+		if (!locationPathValue) {
+			throw vscode.FileSystemError.Unavailable('no path');
+		}
+		const locationPath = path.posix.parse(locationPathValue);
 		if (!locationPath.base.startsWith('edit')) {
 			throw vscode.FileSystemError.Unavailable('bad location');
 		}
@@ -173,7 +224,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 				value = Buffer.concat([value, eol, buffer.slice(lineStart, lineEnd)]);
 			}
 			if (key === 'title') {
-
+				this.title = value.toString();
 			}
 			else if (key === 'description') {
 				this.description = value.toString();

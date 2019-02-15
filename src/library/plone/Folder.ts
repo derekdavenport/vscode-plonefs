@@ -63,7 +63,7 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		this.entries = new Map<string, Entry>();
 	}
 
-	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
+	async saveSetting(settingName: string, cookie: Cookie): Promise<boolean> {
 		if (this.isRoot) {
 			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
@@ -138,6 +138,7 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 			if (item.normalized_type in classes) {
 				const entry = new classes[item.normalized_type](vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true);
 				entry.state = item.review_state;
+				entry.title = item.title;
 				entry.description = item.description;
 				this.entries.set(item.id, entry);
 			}

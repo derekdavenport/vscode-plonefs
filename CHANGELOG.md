@@ -6,7 +6,9 @@
 - Added support for News Items, Events, and Collections (aka Topics)
 - Added setting State
 - Added Title and State to status bar
-- Fixed not being able to edit a file's Title
+- Fixed not being able to edit a file's Title / Description
+- Fixed new Title / Description only visible on View page
+- Alphabetically sorted open site menu
 
 ## 0.2.1
 

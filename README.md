@@ -43,10 +43,9 @@ Note: Folders, Files, and Collections cannot be checked out.
 
 ## Known bugs / missing features
 
-* Title / Description changes only show on View page
-* cannot edit file Description
+* Cannot create new Event, News Item, or Collection
 * no support for "Exclude from Navigation" setting
-* checking in a working copy causes the original document to be marked dirty (unsaved) even though it is saved
+* checking in a working copy causes the original document if opened to be marked dirty (unsaved) even though it is saved
 * cannot edit site root folder Title / Description
 * cannot login again after cookie expires (workaround: close and reopen Visual Studio Code)
 * cannot delete
