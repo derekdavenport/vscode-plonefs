@@ -65,10 +65,11 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (folder.uri.scheme === 'plone') {
 				const cookie = await login(folder.uri);
 				if (cookie === undefined) {
-					vscode.window.showErrorMessage('Unable to open site: login cancelled');
-					return;
+					vscode.window.showInformationMessage('login cancelled');
 				}
-				cookies[getSiteName(folder.uri)] = cookie;
+				else {
+					cookies[getSiteName(folder.uri)] = cookie;
+				}
 			}
 		}
 		if (Object.keys(cookies).length) {
@@ -223,7 +224,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
 					// TODO: support file description
 					//if (!(entry instanceof File)) {
-						optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
+					optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
 					//}
 				}
 				if (isWithState(entry)) {

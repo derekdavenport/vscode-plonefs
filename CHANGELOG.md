@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.3.2
+
+- Fixed unable to add new site after login cancelled
+
 ## 0.3.1
 
 - Fixed unable to add new site
