@@ -390,7 +390,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined;
 		while (!uri) {
-			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})).sort(), '＋ new'];
+			const newUriOption = '＋ new';
+			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})).sort(), newUriOption];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				canPickMany: false,
@@ -400,7 +401,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (pick === undefined) {
 				return;
 			}
-			let uriValue = pick !== 'new' ? pick : await vscode.window.showInputBox({
+			let uriValue = pick !== newUriOption ? pick : await vscode.window.showInputBox({
 				prompt: 'Open new Plone site',
 				placeHolder: 'example.com/sitename',
 			});
