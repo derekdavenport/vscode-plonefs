@@ -94,6 +94,8 @@ export async function activate(context: vscode.ExtensionContext) {
 					});
 					if (response.statusCode === 302) {
 						entry.state = TextState[stateText];
+
+						vscode.window.showInformationMessage(`Set state of ${entry.name}: ${stateText}`);
 						// make sure this is still the active document
 						if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri === entry.uri) {
 							setStateStatus(entry);
@@ -230,7 +232,6 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (isWithState(entry)) {
 					optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
 				}
-
 				if (entry instanceof Page) {
 					const match = copyMatch(entry.name);
 					let isWorkingCopy = false;
@@ -243,7 +244,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						const buffer = await getBuffer(response);
 						if (buffer.equals(Buffer.from('True'))) {
 							optionsToAction['Check In'] = { type: Options.checkIn, entry };
-							optionsToAction['Cancel Check In'] = { type: Options.cancelCheckOut, entry };
+							optionsToAction['Cancel Check Out'] = { type: Options.cancelCheckOut, entry };
 							isWorkingCopy = true;
 						}
 					}
@@ -278,7 +279,9 @@ export async function activate(context: vscode.ExtensionContext) {
 						let tryCheckOut: string | undefined = 'try again';
 						while (tryCheckOut) {
 							try {
-								tryCheckOut = await ploneFS.checkOut(action.entry);
+								const copy = await ploneFS.checkOut(action.entry);
+								vscode.window.showTextDocument(copy.uri);
+								break;
 							}
 							catch (error) {
 								tryCheckOut = await vscode.window.showErrorMessage('Unable to check out. It may already be checked out\n' + error.message, 'try again');
@@ -391,7 +394,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined;
 		while (!uri) {
-			const newUriOption = '＋ new';
+			const newUriOption = '$(file-add) new';
 			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})).sort(), newUriOption];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',

@@ -38,6 +38,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	}
 	title: string;
 	description: string;
+	excludeFromNav: boolean;
 
 	loading: boolean;
 	loaded: boolean;
@@ -59,6 +60,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		// TODO: move title and description out of settings
 		this.title = this.name;
 		this.description = '';
+		this.excludeFromNav = false;
 
 		this.loading = false;
 		this.loaded = false;
@@ -95,6 +97,19 @@ export default abstract class PloneObject implements vscode.FileStat {
 		const details: Details = JSON.parse(buffer.toString());
 		this.title = details.title;
 		this.description = details.description;
+	}
+
+	async loadExcludeFromNav(cookie: Cookie) {
+		const response = await get({
+			host: this.uri.authority,
+			path: this.uri.path + '/exclude_from_nav',
+			headers: { cookie },
+		});
+		if (response.statusCode !== 200) {
+			throw vscode.FileSystemError.Unavailable(this.uri);
+		}
+		const buffer = await getBuffer(response);
+		this.excludeFromNav = buffer.equals(Buffer.from('True'));
 	}
 
 	protected async _loadExternalBuffer(cookie: Cookie): Promise<Buffer> {
@@ -243,7 +258,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		};
 		const postData = {
 			id: this.name,
-			title: this.name,
+			title: this.title || this.name,
 			'form.submitted': 1,
 		};
 		const response = await post(options, postData);

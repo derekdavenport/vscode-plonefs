@@ -37,7 +37,7 @@ export interface WithState {
 }
 
 export function isWithState(value: any): value is WithState {
-	return typeof value !== 'undefined' && Object.keys(StateText).includes(value.state);
+	return value instanceof Object && Object.keys(StateText).includes((value as WithState).state);
 }
 
 export interface WithLocalCss {
@@ -46,5 +46,5 @@ export interface WithLocalCss {
 }
 
 export function isWithLocalCss(value: any): value is WithLocalCss {
-	return typeof value !== 'undefined' && typeof value.hasLocaCss === 'boolean';
+	return value instanceof Object && typeof (value as WithLocalCss).hasLocalCss === 'boolean';
 }

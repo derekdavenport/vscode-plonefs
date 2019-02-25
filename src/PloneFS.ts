@@ -77,14 +77,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-		const entry = await this._lookupAsFolder(uri, false);
-		const loadedEntries = await entry.loadEntries(this.getRoot(uri).cookie);
+		const folder = await this._lookupAsFolder(uri, false);
+		const loadedEntries = await folder.loadEntries(this.getRoot(uri).cookie);
 		if (!loadedEntries) {
 			throw vscode.FileSystemError.Unavailable('could not load');
 		}
 		// return Array.from(entry.entries).map(([name, child]) => [name, child.type] as [string, vscode.FileType]);
 		let result: [string, vscode.FileType][] = [];
-		for (const [name, child] of entry.entries) {
+		for (const [name, child] of folder.entries) {
 			result.push([name, child.type]);
 		}
 		return result;
@@ -262,7 +262,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		this._fireSoon({ type: vscode.FileChangeType.Changed, uri: dirname }, { type: vscode.FileChangeType.Created, uri });
 	}
 
-	async checkOut<P extends Page>(page: P): Promise<undefined> {
+	async checkOut<P extends Page>(page: P): Promise<P> {
 		const response = await get({
 			host: page.uri.authority,
 			path: page.uri.path + '/@@content-checkout',
@@ -286,7 +286,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		this._fireSoon(
 			{ type: vscode.FileChangeType.Created, uri: copy.uri },
 		);
-		return;
+		return copy;
 	}
 
 	async cancelCheckOut(page: Page): Promise<void> {

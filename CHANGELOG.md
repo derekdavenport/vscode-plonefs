@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.3.3
+
+- Fixed unable to open Local CSS
+- After check out, new working copy will be opened
+- Fixed working copies not disapearing from explorer after check in / cancel check out
+- Fixed typo in "Plone Options" menu: "Cancel Check In" to "Cancel Check Out"
+- Fixed file rename setting Title to id
+
 ## 0.3.2
 
 - Fixed unable to add new site after login cancelled
@@ -16,7 +24,7 @@
 - Added Title and State to status bar
 - Fixed not being able to edit a file's Title / Description
 - Fixed new Title / Description only visible on View page
-- Alphabetically sorted open site menu
+- Alphabetically sorted "Open Site" menu
 
 ## 0.2.1
 

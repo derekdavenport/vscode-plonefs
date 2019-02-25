@@ -19,6 +19,7 @@ export default abstract class BaseFile extends PloneObject {
 
 	async save(cookie: string): Promise<boolean> {
 		// if doesn't exist or a rename, need full save
+		// TODO: make rename a separate function using POST setId value: id
 		if (!this.exists || this.path.base !== this.name) {
 			return super.save(cookie);
 		}

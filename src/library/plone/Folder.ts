@@ -129,8 +129,12 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 			rooted: 'False',
 			document_base_url: 'https://' + this.uri.authority + this.uri.path + '/',
 		});
+		if (response.statusCode !== 200) {
+			throw vscode.FileSystemError.Unavailable('could not load folder entries.\n' + response.statusCode + ': ' + response.statusMessage);
+		}
 		const buffer = await getBuffer(response);
 		const json: Listing = JSON.parse(buffer.toString());
+		this.entries.clear();
 		//this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
 		// json.path[0] // TODO: check if really root?
 		// json.upload_allowed // TODO: check this to know if can save?
