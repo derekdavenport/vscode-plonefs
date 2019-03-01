@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { get, post, copyMatch } from './library/util';
 
-import { Folder, BaseFile, Page, File, Entry, isWithLocalCss } from './library/plone';
+import { Folder, BaseFile, Page, File, Entry, isWithLocalCss, PortletUrls } from './library/plone';
 import { RequestOptions } from 'https';
 
 export type Credentials = {
@@ -100,6 +100,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		catch (error) {
 			if (error instanceof vscode.FileSystemError) {
 				console.log(error.name);
+			}
+			else {
+				throw error;
 			}
 		}
 		if (!file.loaded) {
@@ -379,6 +382,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return response.statusCode === 200;
 	}
 
+
+
 	// --- lookup
 
 	private async _lookup(uri: vscode.Uri, silent: false): Promise<Entry>;
@@ -399,7 +404,19 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				continue;
 			}
 			let child: Entry | undefined;
-			if (entry instanceof Folder) {
+			// portlet support
+			// TODO: after a portlet is opened, vscode will check the containing folder
+			// it will need to see the portlet in that folder or will label the portlet as deleted
+			// probably need to fake the folder somehow
+			// make a PortletFolder class that gets returned here
+			if (part in PortletUrls) {
+				const portletSide = PortletUrls[part as keyof typeof PortletUrls];
+				// TODO: don't return the portlet,
+				// set child to PortletFolder and keep going
+				// maybe move loadPortlets from PloneObject into PortletFolder
+				return entry.portlets[portletSide].get(parts.pop()!);
+			}
+			else if (entry instanceof Folder) {
 				// this can happen when VSCode restores a saved workspace with open folders
 				if (!entry.loadedEntries) {
 					await entry.loadEntries(this.getRoot(uri).cookie);

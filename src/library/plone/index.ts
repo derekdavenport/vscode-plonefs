@@ -8,8 +8,10 @@ import Event from './Event';
 import Topic from './Topic';
 import File from './File';
 import LocalCss from './LocalCss';
+import Portlet, { PortletSides, PortletUrls, PortletSideUrls, PortletManagerSides } from './Portlet';
+import { Cookie } from '../../PloneFS';
 
-export { PloneObject, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss };
+export { PloneObject, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss, Portlet, PortletSides, PortletUrls, PortletSideUrls, PortletManagerSides };
 export type Entry = Folder | BaseFile | Document;
 
 export enum StateText {
@@ -32,19 +34,35 @@ export enum TextState {
 
 export type State = keyof typeof StateText;
 
-export interface WithState {
+export interface WithState extends PloneObject {
 	state: State;
 }
 
-export function isWithState(value: any): value is WithState {
-	return value instanceof Object && Object.keys(StateText).includes((value as WithState).state);
+export function isWithState(ploneObject: PloneObject): ploneObject is WithState {
+	return Object.keys(StateText).includes((ploneObject as WithState).state);
 }
 
-export interface WithLocalCss {
+export interface WithLocalCss extends PloneObject {
 	hasLocalCss: boolean;
 	localCss: LocalCss | undefined;
 }
 
-export function isWithLocalCss(value: any): value is WithLocalCss {
-	return value instanceof Object && typeof (value as WithLocalCss).hasLocalCss === 'boolean';
+export function isWithLocalCss(ploneObject: PloneObject): ploneObject is WithLocalCss {
+	return typeof (ploneObject as WithLocalCss).hasLocalCss === 'boolean';
+}
+
+export type Portlets = {
+	top: Map<string, Portlet>,
+	right: Map<string, Portlet>,
+	bottom: Map<string, Portlet>,
+	left: Map<string, Portlet>,
+}
+
+export interface WithPortlets extends PloneObject {
+	portlets: Portlets;
+	loadPortlets: (cookie: Cookie, side: keyof typeof PortletManagerSides) => Promise<boolean>;
+}
+
+export function isWithPortlets(ploneObject: PloneObject): ploneObject is WithPortlets {
+	return typeof (ploneObject as WithPortlets).loadPortlets === 'function';
 }

@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore } from './PloneFS';
-import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss, StateText, TextState } from './library/plone';
+import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss, StateText, TextState, WithPortlets, WithState, WithLocalCss, PortletSides, isWithPortlets, Portlet } from './library/plone';
 import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
@@ -30,6 +30,7 @@ enum Options {
 	cancelCheckOut,
 	checkIn,
 	openLocalCSS,
+	portlets,
 };
 interface SetSettingAction {
 	type: Options.title | Options.description,
@@ -37,7 +38,7 @@ interface SetSettingAction {
 }
 interface SetStateAction {
 	type: Options.setState,
-	entry: Folder | Document,
+	entry: WithState,
 }
 interface CheckOutAction {
 	type: Options.checkOut,
@@ -53,9 +54,13 @@ interface CheckInAction {
 }
 interface OpenLocalCssAction {
 	type: Options.openLocalCSS,
-	entry: Folder | Document,
+	entry: WithLocalCss,
 }
-type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction;
+interface PortletsAction {
+	type: Options.portlets,
+	entry: WithPortlets,
+}
+type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction | PortletsAction;
 
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -80,7 +85,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			stateStatus.command = 'plonefs.changeState';
 			stateStatus.tooltip = 'Change state';
 
-			async function showChangeState(entry: Folder | Document) {
+			async function showChangeState(entry: WithState) {
 				const stateText = await vscode.window.showQuickPick(Object.keys(StateActions), {
 					placeHolder: 'Choose State',
 					canPickMany: false,
@@ -94,7 +99,6 @@ export async function activate(context: vscode.ExtensionContext) {
 					});
 					if (response.statusCode === 302) {
 						entry.state = TextState[stateText];
-
 						vscode.window.showInformationMessage(`Set state of ${entry.name}: ${stateText}`);
 						// make sure this is still the active document
 						if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri === entry.uri) {
@@ -107,7 +111,34 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
-			function setStateStatus(entry: Folder | Document) {
+			async function showPortletSidePicker(entry: WithPortlets) {
+				const side = await vscode.window.showQuickPick(Object.keys(PortletSides), { placeHolder: 'Pick Portlet Side' }) as keyof typeof PortletSides | undefined;
+				if (!side) {
+					return;
+				}
+				showPortlets(entry, side);
+			}
+
+			async function showPortlets(entry: WithPortlets, side: keyof typeof PortletSides) {
+				const cookie = ploneFS.getRoot(entry.uri).cookie;
+				await entry.loadPortlets(cookie, side);
+				const portletName = await vscode.window.showQuickPick([...entry.portlets[side].keys()], { placeHolder: 'Pick Portlet' });
+				if (!portletName) {
+					return;
+				}
+				const portlet = entry.portlets[side].get(portletName);
+				if (portlet) {
+					// await portlet.load(cookie);
+					try {
+						await vscode.window.showTextDocument(portlet.uri);
+					}
+					catch (error) {
+						vscode.window.showErrorMessage(error.message);
+					}
+				}
+			}
+
+			function setStateStatus(entry: WithState) {
 				stateStatus.text = 'State: ' + StateText[entry.state!];
 				stateStatus.color = StateColor[entry.state!];
 				stateStatus.show();
@@ -159,7 +190,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(async doc => {
 				const entry: Entry = await ploneFS.stat(doc.uri);
 				if (doc.languageId === 'plaintext') {
-					if (entry instanceof Document) {
+					if (entry instanceof Document || entry instanceof Portlet) {
 						vscode.languages.setTextDocumentLanguage(doc, 'html');
 					}
 					else if (entry instanceof LocalCss) {
@@ -218,11 +249,11 @@ export async function activate(context: vscode.ExtensionContext) {
 			async function optionsMenu(uri: vscode.Uri): Promise<void> {
 				const entry = await ploneFS.stat(uri);
 				const cookie = ploneFS.getRoot(entry.uri).cookie;
-				await entry.loadDetails(cookie);
 				// map readable text to pick option
 				const optionsToAction: { [option: string]: OptionsMenuAction } = {};
 				// disable title/description for root until supported
 				if (!(entry instanceof Folder && entry.isRoot)) {
+					await entry.loadDetails(cookie);
 					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
 					// TODO: support file description
 					//if (!(entry instanceof File)) {
@@ -254,6 +285,9 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 				if (isWithLocalCss(entry) && entry.hasLocalCss) {
 					optionsToAction['Open Local CSS'] = { type: Options.openLocalCSS, entry };
+				}
+				if (isWithPortlets(entry)) {
+					optionsToAction['Portlets'] = { type: Options.portlets, entry };
 				}
 				const option = await vscode.window.showQuickPick(Object.keys(optionsToAction), {
 					placeHolder: 'Plone Options',
@@ -325,6 +359,9 @@ export async function activate(context: vscode.ExtensionContext) {
 							vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
 						}
 						break;
+					case Options.portlets:
+						showPortletSidePicker(action.entry);
+						break;
 					default:
 						const never: never = action;
 						throw new Error('unexpected Plone setting: ' + never);
@@ -333,7 +370,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.editSettings',
-				(uri: vscode.Uri) => optionsMenu(uri),
+				(uri: vscode.Uri) => {
+					optionsMenu(uri)
+				},
 			));
 			context.subscriptions.push(vscode.commands.registerCommand(
 				'plonefs.debug.expireCookie',

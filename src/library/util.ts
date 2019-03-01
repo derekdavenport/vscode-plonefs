@@ -92,16 +92,10 @@ export function post(options: https.RequestOptions, formData: FormData | Multipa
 	}
 }
 
+querystring.escape
+
 export function postFormData(options: https.RequestOptions, formData: FormData) {
 	return new Promise<http.IncomingMessage>((resolve, reject) => {
-		// const [values, buffers] = Object.entries(formData).reduce(([values, buffers], [key, value]) => {
-		// 	if (isValueType(value) || isValueTypeArray(value)) {
-		// 		return [{...values, key: value}, buffers] as [FormData, Buffer[]];
-		// 	}
-		// 	else {
-		// 		return [values, {...buffers, key: value}] as [FormData, Buffer[]];
-		// 	}
-		// }, [{},{}] as [FormData, Buffer[]]);
 		const formDataBuffer = Buffer.from(querystring.stringify(formData));
 		options = {
 			...options,

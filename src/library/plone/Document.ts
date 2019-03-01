@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { BaseFile, LocalCss, State, WithState, WithLocalCss } from '.';
+import { BaseFile, LocalCss, State, WithState, WithLocalCss, WithPortlets, PortletManagerSides } from '.';
+import { Cookie } from '../../PloneFS';
 
-export default abstract class Document extends BaseFile implements WithState, WithLocalCss {
+export default abstract class Document extends BaseFile implements WithState, WithLocalCss, WithPortlets {
 	static readonly fieldname = 'text';
 
 	state: State;
@@ -17,5 +18,9 @@ export default abstract class Document extends BaseFile implements WithState, Wi
 		if (this.hasLocalCss) {
 			this.localCss = new LocalCss(uri);
 		}
+	}
+
+	loadPortlets(cookie: Cookie, side: keyof typeof PortletManagerSides): Promise<boolean> {
+		return super._loadPortlets(cookie, side);
 	}
 }

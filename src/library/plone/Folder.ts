@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { PloneObject, Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss } from '.';
+import { PloneObject, Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, Portlets, Portlet, PortletManagerSides } from '.';
 import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
+import { stringify } from 'querystring';
 
 type Listing = {
 	parent_url: string;
@@ -24,7 +25,7 @@ type Item = {
 	normalized_type: 'folder' | 'document' | 'news-item' | 'event' | 'topic' | 'file';
 };
 
-export default class Folder extends PloneObject implements WithState, WithLocalCss {
+export default class Folder extends PloneObject implements WithState, WithLocalCss, WithPortlets {
 	entries: Map<string, Entry>;
 	loadingEntries: boolean;
 	loadingEntriesPromise: Promise<boolean>;
@@ -63,7 +64,7 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		this.entries = new Map<string, Entry>();
 	}
 
-	async saveSetting(settingName: string, cookie: Cookie): Promise<boolean> {
+	saveSetting(settingName: string, cookie: Cookie): Promise<boolean> {
 		if (this.isRoot) {
 			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
@@ -77,6 +78,13 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		// 	case 'description':
 		// 		break;
 		// }
+	}
+
+	loadDetails(cookie: Cookie): Promise<void> {
+		if (this.isRoot) {
+			throw vscode.FileSystemError.Unavailable('cannot load details for root folder');
+		}
+		return super.loadDetails(cookie);
 	}
 
 	loadEntries(cookie: Cookie): Promise<boolean> {
@@ -161,5 +169,9 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
+	}
+
+	loadPortlets(cookie: Cookie, side: keyof typeof PortletManagerSides): Promise<boolean> {
+		return super._loadPortlets(cookie, side);
 	}
 }
