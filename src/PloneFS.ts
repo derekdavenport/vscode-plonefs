@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { get, post, copyMatch } from './library/util';
 
-import { Folder, BaseFile, Page, File, Entry, isWithLocalCss, PortletUrls } from './library/plone';
+import { Folder, BaseFile, Page, File, Entry, isWithLocalCss, PortletUrls, isWithPortlets, BaseFolder } from './library/plone';
 import { RequestOptions } from 'https';
 
 export type Credentials = {
@@ -66,7 +66,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	_debug_expireCookies() {
 		for (const uriValue in this.roots) {
-			this.roots[uriValue].cookie = '';
+			this.roots[uriValue].cookie = '__ac="badcookie"';
 		}
 	}
 
@@ -82,7 +82,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		if (!loadedEntries) {
 			throw vscode.FileSystemError.Unavailable('could not load');
 		}
-		// return Array.from(entry.entries).map(([name, child]) => [name, child.type] as [string, vscode.FileType]);
+		// return [...entry.entries()].map(([name, child]) => [name, child.type] as [string, vscode.FileType]);
 		let result: [string, vscode.FileType][] = [];
 		for (const [name, child] of folder.entries) {
 			result.push([name, child.type]);
@@ -151,7 +151,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		//let newName = path.posix.basename(destination.path);
 		const cookie = this.getRoot(source).cookie;
 		const copyCookie = await entry.copy(cookie);
-		const newParent = await this._lookupParentFolder(destination);
+		const newParent = await this._lookupParentFolder(destination) as Folder;
 		await newParent.paste(cookie + '; ' + copyCookie);
 		const copy = Object.assign(Object.create(Object.getPrototypeOf(entry)), entry);
 		// if new folder already has entry with this name
@@ -190,7 +190,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		const oldParent = await this._lookupParentFolder(oldUri);
 		const oldName = entry.name;
 
-		const newParent = await this._lookupParentFolder(newUri);
+		const newParent = await this._lookupParentFolder(newUri) as Folder;
 
 		const cookie = this.getRoot(oldUri).cookie;
 
@@ -409,14 +409,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 			// it will need to see the portlet in that folder or will label the portlet as deleted
 			// probably need to fake the folder somehow
 			// make a PortletFolder class that gets returned here
-			if (part in PortletUrls) {
+			if (part in PortletUrls && isWithPortlets(entry)) {
 				const portletSide = PortletUrls[part as keyof typeof PortletUrls];
 				// TODO: don't return the portlet,
 				// set child to PortletFolder and keep going
 				// maybe move loadPortlets from PloneObject into PortletFolder
-				return entry.portlets[portletSide].get(parts.pop()!);
+				child = entry.portletManagers[portletSide]; //.get(parts.pop()!);
 			}
-			else if (entry instanceof Folder) {
+			else if (entry instanceof BaseFolder) {
 				// this can happen when VSCode restores a saved workspace with open folders
 				if (!entry.loadedEntries) {
 					await entry.loadEntries(this.getRoot(uri).cookie);
@@ -438,9 +438,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return entry;
 	}
 
-	private async _lookupAsFolder(uri: vscode.Uri, silent: false): Promise<Folder>;
-	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder | undefined>;
-	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<Folder | undefined> {
+	private async _lookupAsFolder(uri: vscode.Uri, silent: false): Promise<BaseFolder>;
+	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<BaseFolder | undefined>;
+	private async _lookupAsFolder(uri: vscode.Uri, silent: boolean): Promise<BaseFolder | undefined> {
 		const entry = await this._lookup(uri, silent);
 		if (entry instanceof BaseFile) {
 			throw vscode.FileSystemError.FileNotADirectory(uri);
@@ -452,13 +452,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined>;
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined> {
 		const entry = await this._lookup(uri, silent);
-		if (entry instanceof Folder) {
+		if (entry instanceof BaseFolder) {
 			throw vscode.FileSystemError.FileIsADirectory(uri);
 		}
 		return entry;
 	}
 
-	private async _lookupParentFolder(uri: vscode.Uri): Promise<Folder> {
+	private async _lookupParentFolder(uri: vscode.Uri): Promise<BaseFolder> {
 		const dirname = uri.with({ path: path.posix.dirname(uri.path), query: '' });
 		return await this._lookupAsFolder(dirname, false);
 	}

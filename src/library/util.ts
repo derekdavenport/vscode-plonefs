@@ -13,6 +13,114 @@ https.globalAgent.options.ca = rootCas;
 // will work with all https requests will all libraries (i.e. request.js)
 //require('https').globalAgent.options.ca = rootCas;
 
+type Cookies = {
+	[uri: string]: {
+		[key: string]: string | null;
+	};
+};
+type CookieEntry = [string, string | null];
+type HttpOptions = {
+	cookies?: Cookies,
+	retry?: boolean,
+	retryCheck?: (options: https.RequestOptions, response: http.IncomingMessage) => Promise<boolean>;
+	cookieParser?: (options: https.RequestOptions, response: http.IncomingMessage) => Cookies;
+};
+export class Http {
+	private cookies: Cookies;
+	retry: boolean | (() => boolean) | (() => Promise<boolean>);
+	cookieParser: (options: https.RequestOptions, response: http.IncomingMessage) => Cookies;
+	constructor({ cookies = {}, retry = false, cookieParser }: HttpOptions) {
+		this.cookies = cookies;
+		this.retry = retry;
+		this.cookieParser = cookieParser ? cookieParser : this.defaultCookieParser;
+
+	}
+	private async defaultRetryCheck(options: https.RequestOptions, response: http.IncomingMessage): Promise<boolean> {
+		return false;
+	}
+	private defaultCookieParser(options: https.RequestOptions, response: http.IncomingMessage): Cookies {
+		const cookieJar: Cookies = {};
+		if (response.headers['set-cookie']) {
+			for (const set of response.headers['set-cookie']) {
+				let uri = options.host!;
+				let cookie: { [key: string]: string | null } = {};
+				let maxAge: number | undefined;
+				for (const part of set.split(/;\s*/)) {
+					const [key, value] = part.split('=');
+					switch (key) {
+						case 'Path':
+							uri += value;
+							break;
+						case 'Expires':
+							if (!maxAge) {
+
+							}
+							break;
+						case 'Max-Age':
+							maxAge = parseInt(value);
+							break;
+						case 'HTTPOnly':
+							break;
+						default:
+							// TODO: test if first iteration?
+							if (value) {
+								cookie = { [key]: value };
+							}
+					}
+					if (maxAge && maxAge <= 0) {
+						cookie[key] = null;
+					}
+					cookieJar[uri] = {
+						...cookieJar[uri],
+						...cookie,
+					};
+				}
+			}
+		}
+		return cookieJar;
+	}
+
+	private getCookie(uri: string): string {
+		// sort longest to shortest
+		const cookieUris = Object.keys(this.cookies).sort((a, b) => b.length - a.length);
+		for (const cookieUri of cookieUris) {
+			if (uri.indexOf(cookieUri) === 0) {
+				return Object.entries(this.cookies[cookieUri])
+					.filter(([, value]: CookieEntry) => value !== null)
+					.map(([key, value]: CookieEntry) => `${key}=${value}`)
+					.join('; ');
+			}
+		}
+		return '';
+	}
+	private addCookie(options: https.RequestOptions): https.RequestOptions {
+		return !options.host ? options : {
+			...options,
+			headers: {
+				...options.headers,
+				cookie: this.getCookie(options.host + options.path),
+			}
+		};
+	}
+	get(options: https.RequestOptions) {
+		return new Promise<http.IncomingMessage>((resolve, reject) => {
+			options = this.addCookie(options);
+			if (options.path) {
+				options.path = escapePath(options.path);
+			}
+			const request = https.get(options);
+			request.on('response', response => {
+				this.cookies = {
+					...this.cookies,
+					...this.cookieParser(options, response),
+				}
+				resolve(response);
+			});
+			request.on('error', error => reject(error));
+		});
+	}
+}
+
 /**
  * helper function to use promise instead of setting a callback
  * 
@@ -207,7 +315,7 @@ export const creturn = 13; // '\r'
 export const colon = 58; // ':'
 export const indent = '  ';
 // between every line in multiline values
-export const  blankLine = '  \r\n  ';
+export const blankLine = '  \r\n  ';
 // except these keys
 export const singleLineKeys = ['locallyAllowedTypes', 'immediatelyAddableTypes'];
 export const endOfLineSequences = {
@@ -215,7 +323,7 @@ export const endOfLineSequences = {
 	[Mode.Python]: Buffer.from([creturn, linefeed]),
 };
 // between key and value
-export const  valueStartOffsets = {
+export const valueStartOffsets = {
 	[Mode.Header]: 1, // ':'
 	[Mode.Python]: 2, // ': '
 };

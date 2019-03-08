@@ -1,4 +1,5 @@
 import PloneObject from './PloneObject';
+import BaseFolder from './BaseFolder';
 import Folder from './Folder';
 import BaseFile from './BaseFile';
 import Document from './Document';
@@ -8,11 +9,11 @@ import Event from './Event';
 import Topic from './Topic';
 import File from './File';
 import LocalCss from './LocalCss';
-import Portlet, { PortletSides, PortletUrls, PortletSideUrls, PortletManagerSides } from './Portlet';
-import { Cookie } from '../../PloneFS';
+import Portlet from './Portlet';
+import PortletManager from './PortletManager';
 
-export { PloneObject, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss, Portlet, PortletSides, PortletUrls, PortletSideUrls, PortletManagerSides };
-export type Entry = Folder | BaseFile | Document;
+export { PloneObject, BaseFolder, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss, PortletManager, Portlet };
+export type Entry = BaseFolder | Folder | PortletManager | BaseFile | Document | Page | NewsItem | Event | Topic | File | LocalCss | Portlet;
 
 export enum StateText {
 	internal = 'Internal draft',
@@ -50,19 +51,48 @@ export interface WithLocalCss extends PloneObject {
 export function isWithLocalCss(ploneObject: PloneObject): ploneObject is WithLocalCss {
 	return typeof (ploneObject as WithLocalCss).hasLocalCss === 'boolean';
 }
+export enum PortletSides {
+	top = 'top',
+	right = 'right',
+	bottom = 'bottom',
+	left = 'left',
+}
+export type PortletSideType = keyof typeof PortletSides;
 
-export type Portlets = {
-	top: Map<string, Portlet>,
-	right: Map<string, Portlet>,
-	bottom: Map<string, Portlet>,
-	left: Map<string, Portlet>,
+export enum PortletUrls {
+	'++contextportlets++uofl.heromanager' = 'top',
+	'++contextportlets++plone.rightcolumn' = 'right',
+	'++contextportlets++uofl.prefootermanager' = 'bottom',
+	'++contextportlets++plone.leftcolumn' = 'left',
+}
+
+export enum PortletSideUrls {
+	top = '++contextportlets++uofl.heromanager',
+	right = '++contextportlets++plone.rightcolumn',
+	bottom = '++contextportlets++uofl.prefootermanager',
+	left = '++contextportlets++plone.leftcolumn',
+}
+
+export enum PortletManagerSides {
+	top = 'uofl-heromanager',
+	right = 'plone-rightcolumn',
+	bottom = 'uofl-prefootermanager',
+	left = 'plone-leftcolumn',
+}
+
+export type PortletManagers = {
+	// [side in PortletSideType]: PortletManager<side>;
+	top: PortletManager<'top'>,
+	right: PortletManager<'right'>,
+	bottom: PortletManager<'bottom'>,
+	left: PortletManager<'left'>,
 }
 
 export interface WithPortlets extends PloneObject {
-	portlets: Portlets;
-	loadPortlets: (cookie: Cookie, side: keyof typeof PortletManagerSides) => Promise<boolean>;
+	portletManagers: PortletManagers;
 }
 
 export function isWithPortlets(ploneObject: PloneObject): ploneObject is WithPortlets {
-	return typeof (ploneObject as WithPortlets).loadPortlets === 'function';
+	return typeof (ploneObject as WithPortlets).portletManagers === 'object'; // && ploneObject.portlets.each()
 }
+

@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import PloneFS, { CookieStore } from './PloneFS';
-import { Page, File, LocalCss, Folder, Entry, Document, isWithState, isWithLocalCss, StateText, TextState, WithPortlets, WithState, WithLocalCss, PortletSides, isWithPortlets, Portlet } from './library/plone';
+import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, TextState, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager } from './library/plone';
 import { copyMatch, get, getBuffer } from './library/util';
 
 const cookieStoreName = 'cookieStore';
@@ -116,19 +116,34 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!side) {
 					return;
 				}
-				showPortlets(entry, side);
+				showPortlets(entry.portletManagers[side]);
 			}
 
-			async function showPortlets(entry: WithPortlets, side: keyof typeof PortletSides) {
-				const cookie = ploneFS.getRoot(entry.uri).cookie;
-				await entry.loadPortlets(cookie, side);
-				const portletName = await vscode.window.showQuickPick([...entry.portlets[side].keys()], { placeHolder: 'Pick Portlet' });
+			async function showPortlets(portletManager: PortletManager) {
+				const root = ploneFS.getRoot(portletManager.uri)
+				let cookie: string | undefined = root.cookie;
+				while (cookie !== undefined) {
+					try {
+						await portletManager.loadEntries(cookie);
+						cookie = undefined;
+					}
+					catch (error) {
+						// if (error instanceof vscode.FileSystemError.NoPermissions) {
+						if (error.name === "NoPermissions (FileSystemError)") {
+							cookie = await login(root.folder.uri);
+						}
+						else {
+							vscode.window.showErrorMessage(error.message);
+							return;
+						}
+					}
+				}
+				const portletName = await vscode.window.showQuickPick([...portletManager.entries.keys()], { placeHolder: 'Pick Portlet' });
 				if (!portletName) {
 					return;
 				}
-				const portlet = entry.portlets[side].get(portletName);
+				const portlet = portletManager.entries.get(portletName);
 				if (portlet) {
-					// await portlet.load(cookie);
 					try {
 						await vscode.window.showTextDocument(portlet.uri);
 					}

@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
-import { PloneObject, Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, Portlets, Portlet, PortletManagerSides } from '.';
+import { Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, PortletManagers, PortletManager, BaseFolder } from '.';
 import { post, getBuffer, get } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
-import { stringify } from 'querystring';
 
 type Listing = {
 	parent_url: string;
@@ -25,11 +24,8 @@ type Item = {
 	normalized_type: 'folder' | 'document' | 'news-item' | 'event' | 'topic' | 'file';
 };
 
-export default class Folder extends PloneObject implements WithState, WithLocalCss, WithPortlets {
+export default class Folder extends BaseFolder implements WithState, WithLocalCss, WithPortlets {
 	entries: Map<string, Entry>;
-	loadingEntries: boolean;
-	loadingEntriesPromise: Promise<boolean>;
-	loadedEntries: boolean;
 	private _isRoot!: boolean;
 	get isRoot() {
 		return this._isRoot;
@@ -41,6 +37,8 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		}
 	}
 
+	portletManagers: PortletManagers;
+
 	state: State;
 	hasLocalCss: boolean;
 	localCss: LocalCss | undefined;
@@ -50,10 +48,6 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 
 		this.state = 'internal';
 
-		this.loadingEntries = false;
-		this.loadedEntries = false;
-		this.loadingEntriesPromise = Promise.resolve(false);
-
 		this.isRoot = isRoot;
 		// special feature for UofL localcss plugin
 		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
@@ -62,6 +56,12 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		}
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
+		this.portletManagers = {
+			top: new PortletManager<'top'>(this.uri, 'top'),
+			right: new PortletManager<'right'>(this.uri, 'right'),
+			bottom: new PortletManager<'bottom'>(this.uri, 'bottom'),
+			left: new PortletManager<'left'>(this.uri, 'left'),
+		};
 	}
 
 	saveSetting(settingName: string, cookie: Cookie): Promise<boolean> {
@@ -69,15 +69,8 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
 		return super.saveSetting(settingName, cookie);
-		
 		// TODO: title and description at the root require an authenticator
 		// not worth the trouble right now
-		// switch (settingName) {
-		// 	case 'title':
-		// 		break;
-		// 	case 'description':
-		// 		break;
-		// }
 	}
 
 	loadDetails(cookie: Cookie): Promise<void> {
@@ -87,13 +80,6 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		return super.loadDetails(cookie);
 	}
 
-	loadEntries(cookie: Cookie): Promise<boolean> {
-		if (this.loadingEntries) {
-			return this.loadingEntriesPromise;
-		}
-		this.loadingEntries = true;
-		return this.loadingEntriesPromise = this._loadEntries(cookie);
-	}
 
 	protected async _load(cookie: Cookie): Promise<boolean> {
 		this.loaded = false;
@@ -118,7 +104,7 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		return true;
 	}
 
-	private async _loadEntries(cookie: Cookie): Promise<boolean> {
+	protected async _loadEntries(cookie: Cookie): Promise<boolean> {
 		this.loadedEntries = false;
 		const classes = {
 			'folder': Folder,
@@ -169,9 +155,5 @@ export default class Folder extends PloneObject implements WithState, WithLocalC
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
-	}
-
-	loadPortlets(cookie: Cookie, side: keyof typeof PortletManagerSides): Promise<boolean> {
-		return super._loadPortlets(cookie, side);
 	}
 }

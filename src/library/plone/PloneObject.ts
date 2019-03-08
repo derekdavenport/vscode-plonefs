@@ -5,8 +5,7 @@ import * as url from 'url';
 import { get, post, getBuffer, linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
 import { RequestOptions } from 'https';
 import { Cookie } from '../../PloneFS';
-import { State, Portlets, Portlet, PortletManagerSides, PortletSideUrls } from '.';
-import { parse, HTMLElement } from 'node-html-parser';
+import { State } from '.';
 
 export default abstract class PloneObject implements vscode.FileStat {
 	static readonly savedText = Buffer.from('saved');
@@ -50,10 +49,6 @@ export default abstract class PloneObject implements vscode.FileStat {
 	exists: boolean;
 
 	state: State | null;
-	portlets: Portlets;
-	loadingPortlets: boolean;
-	loadingPortletsPromise: Promise<boolean>;
-	loadedPortlets: boolean;
 
 	settings: Map<string, Buffer>;
 
@@ -72,16 +67,6 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.loadingPromise = Promise.resolve(false);
 
 		this.state = null;
-
-		this.portlets = {
-			top: new Map<string, Portlet>(),
-			right: new Map<string, Portlet>(),
-			bottom: new Map<string, Portlet>(),
-			left: new Map<string, Portlet>(),
-		};
-		this.loadingPortlets = false;
-		this.loadedPortlets = false;
-		this.loadingPortletsPromise = Promise.resolve(false);
 
 		this.exists = exists;
 		this.settings = new Map<string, Buffer>();
@@ -317,44 +302,5 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	copy(cookie: Cookie): Promise<Cookie> {
 		return this._cutCopy(cookie, 'copy');
-	}
-
-	protected _loadPortlets(cookie: Cookie, side: keyof typeof PortletManagerSides) {
-		if (this.loadingPortlets) {
-			return this.loadingPortletsPromise;
-		}
-		this.loadingPortlets = true;
-		return this.loadingPortletsPromise = this.__loadPortlets(cookie, side);
-	}
-
-	private async __loadPortlets(cookie: Cookie, side: keyof typeof PortletManagerSides): Promise<boolean> {
-		const response = await get({
-			host: this.uri.authority,
-			path: this.uri.path + '/@@manage-portlets',
-			headers: { cookie },
-		});
-		if (response.statusCode !== 200) {
-			throw vscode.FileSystemError.Unavailable(this.uri);
-		}
-		const buffer = await getBuffer(response);
-		const root = parse(buffer.toString()) as HTMLElement;
-		const headerLinks = root.querySelectorAll(`#portletmanager-${PortletManagerSides[side]} .portletHeader div a`) as HTMLElement[];
-		for (const headerLink of headerLinks) {
-			// the edit link has no class
-			if (headerLink.classNames.length) {
-				continue;
-			}
-			// TODO: determine side
-			const href = headerLink.attributes['href'];
-			const editUrl = url.parse(href);
-			const editPath = editUrl.pathname!.substring(0, editUrl.pathname!.length - '/edit'.length);
-			const name = editPath.substring(editPath.lastIndexOf('/') + 1);
-			const title = headerLink.text;
-			const portlet = new Portlet(this.uri.with({path: this.uri.path + '/' + PortletSideUrls[side]  + '/' + name}), true);
-			portlet.title = title;
-			this.portlets[side].set(name, portlet);
-		}
-		this.loadingPortlets = false;
-		return this.loadedPortlets = true;
 	}
 }

@@ -60,10 +60,6 @@
 				{
 					"command": "plonefs.changeState",
 					"when": "resourceScheme == plone"
-				},
-				{
-					"command": "plonefs.debug.expireCookie",
-					"when": "inDebugMode"
 				}
 			]
 		}
