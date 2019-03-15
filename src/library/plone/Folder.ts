@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
-import { Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, PortletManagers, PortletManager, BaseFolder } from '.';
-import { post, getBuffer, get } from '../util';
-import { RequestOptions } from 'https';
-import { Cookie } from '../../PloneFS';
+import { Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, PortletManagers, PortletManager, BaseFolder, PloneObjectOptions, StateAction } from '.';
+import * as Form from 'form-data';
+
+interface FolderOptions extends PloneObjectOptions {
+	isRoot?: boolean;
+}
 
 type Listing = {
 	parent_url: string;
@@ -43,115 +45,109 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 	hasLocalCss: boolean;
 	localCss: LocalCss | undefined;
 
-	constructor(uri: vscode.Uri, exists = false, isRoot = false) {
-		super(uri, exists);
+	constructor(options: FolderOptions) {
+		super(options);
 
 		this.state = 'internal';
-
-		this.isRoot = isRoot;
+		const { isRoot, uri } = options;
+		this.isRoot = isRoot || false;
 		// special feature for UofL localcss plugin
 		this.hasLocalCss = uri.authority.endsWith('louisville.edu');
 		if (this.hasLocalCss) {
-			this.localCss = new LocalCss(uri, isRoot);
+			this.localCss = new LocalCss({ ...options, forRoot: isRoot });
 		}
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 		this.portletManagers = {
-			top: new PortletManager<'top'>(this.uri, 'top'),
-			right: new PortletManager<'right'>(this.uri, 'right'),
-			bottom: new PortletManager<'bottom'>(this.uri, 'bottom'),
-			left: new PortletManager<'left'>(this.uri, 'left'),
+			top:    new PortletManager({ client: this.client, parentUri: this.uri, side: 'top' }),
+			right:  new PortletManager({ client: this.client, parentUri: this.uri, side: 'right' }),
+			bottom: new PortletManager({ client: this.client, parentUri: this.uri, side: 'bottom' }),
+			left:   new PortletManager({ client: this.client, parentUri: this.uri, side: 'left' }),
 		};
 	}
 
-	saveSetting(settingName: string, cookie: Cookie): Promise<boolean> {
+	relativizePath(path: string) {
+		if (path.indexOf(this.uri.path) !== 0) {
+			throw new Error('path is not relative to this folder')
+		}
+		return path.substring(this.uri.path.length);
+	}
+
+	changeState(stateAction: StateAction) {
+		return this._changeState(stateAction);
+	}
+
+	saveSetting(settingName: string): Promise<boolean> {
 		if (this.isRoot) {
 			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
-		return super.saveSetting(settingName, cookie);
+		return super.saveSetting(settingName);
 		// TODO: title and description at the root require an authenticator
 		// not worth the trouble right now
 	}
 
-	loadDetails(cookie: Cookie): Promise<void> {
+	loadDetails(): Promise<void> {
 		if (this.isRoot) {
 			throw vscode.FileSystemError.Unavailable('cannot load details for root folder');
 		}
-		return super.loadDetails(cookie);
+		return super.loadDetails();
 	}
 
 
-	protected async _load(cookie: Cookie): Promise<boolean> {
+	protected async _load(): Promise<void> {
 		this.loaded = false;
-		this.isRoot ? await this._loadRoot(cookie) : await this._loadExternal(cookie);
+		this.isRoot ? await this._loadRoot() : await this._loadExternal();
 		this.loading = false;
-		return this.loaded = true;
+		this.loaded = true;
 	}
 
-	private _loadRoot(cookie: Cookie): boolean {
+	private _loadRoot(): boolean {
 		throw vscode.FileSystemError.Unavailable('loading root folder not implemented');
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/@@site-controlpanel',
-			headers: { cookie },
-		};
-		get(options);
+		this.client(this.uri.path + '/@@site-controlpanel');
 	}
 
-	private async _loadExternal(cookie: Cookie): Promise<boolean> {
-		const buffer = await this._loadExternalBuffer(cookie);
+	private async _loadExternal(): Promise<void> {
+		const buffer = await this._loadExternalBuffer();
 		this.parseExternalEdit(buffer);
-		return true;
 	}
 
-	protected async _loadEntries(cookie: Cookie): Promise<boolean> {
+	protected async _loadEntries(): Promise<void> {
 		this.loadedEntries = false;
 		const classes = {
-			'folder': Folder,
-			'document': Page,
+			folder: Folder,
+			document: Page,
 			'news-item': NewsItem,
-			'event': Event,
-			'topic': Topic,
-			'file': File,
-		}
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/tinymce-jsonlinkablefolderlisting',
-			headers: { cookie },
+			event: Event,
+			topic: Topic,
+			file: File,
 		};
-		const response = await post(options, {
-			rooted: 'False',
-			document_base_url: 'https://' + this.uri.authority + this.uri.path + '/',
-		});
+		const body = new Form();
+		body.append('rooted', 'False');
+		body.append('document_base_url', 'https://' + this.uri.authority + this.uri.path + '/',);
+		const response = await this.client.post(this.uri.path + '/tinymce-jsonlinkablefolderlisting', { body, encoding: 'utf8' });
+		this.loadingEntries = false;
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable('could not load folder entries.\n' + response.statusCode + ': ' + response.statusMessage);
 		}
-		const buffer = await getBuffer(response);
-		const json: Listing = JSON.parse(buffer.toString());
+		const json: Listing = JSON.parse(response.body);
 		this.entries.clear();
 		//this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
 		// json.path[0] // TODO: check if really root?
 		// json.upload_allowed // TODO: check this to know if can save?
 		for (const item of json.items) {
 			if (item.normalized_type in classes) {
-				const entry = new classes[item.normalized_type](vscode.Uri.parse(item.url).with({ scheme: 'plone' }), true);
+				const entry = new classes[item.normalized_type]({ client: this.client, uri: vscode.Uri.parse(item.url).with({ scheme: 'plone' }), exists: true });
 				entry.state = item.review_state;
 				entry.title = item.title;
 				entry.description = item.description;
 				this.entries.set(item.id, entry);
 			}
 		}
-		this.loadingEntries = false;
-		return this.loadedEntries = true;
+		this.loadedEntries = true;
 	}
 
-	async paste(cookie: Cookie): Promise<void> {
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/object_paste',
-			headers: { cookie },
-		};
-		const response = await get(options);
+	async paste(): Promise<void> {
+		const response = await this.client(this.uri.path + '/object_paste');
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}

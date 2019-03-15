@@ -1,4 +1,4 @@
-import PloneObject from './PloneObject';
+import PloneObject, { PloneObjectOptions } from './PloneObject';
 import BaseFolder from './BaseFolder';
 import Folder from './Folder';
 import BaseFile from './BaseFile';
@@ -12,8 +12,8 @@ import LocalCss from './LocalCss';
 import Portlet from './Portlet';
 import PortletManager from './PortletManager';
 
-export { PloneObject, BaseFolder, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss, PortletManager, Portlet };
-export type Entry = BaseFolder | Folder | PortletManager | BaseFile | Document | Page | NewsItem | Event | Topic | File | LocalCss | Portlet;
+export { PloneObject, PloneObjectOptions, BaseFolder, Folder, BaseFile, Document, Page, NewsItem, Event, Topic, File, LocalCss, PortletManager, Portlet };
+export type Entry = BaseFolder | BaseFile | Folder | PortletManager | Document | Page | NewsItem | Event | Topic | File | LocalCss | Portlet;
 
 export enum StateText {
 	internal = 'Internal draft',
@@ -23,20 +23,57 @@ export enum StateText {
 	private = 'Private',
 	pending = 'Pending review',
 };
-
-export enum TextState {
-	'Internal draft' = 'internal',
-	'Externally visible' = 'external',
-	'Internally published' = 'internally_published',
-	'Internally restricted' = 'internally_restricted',
-	'Private' = 'private',
-	'Pending review' = 'pending',
-};
-
 export type State = keyof typeof StateText;
+
+export enum ActionState {
+	show_internally = 'internal',
+	hide = 'internal',
+	publish_externally = 'external',
+	publish_internally = 'internally_published',
+	publish_restricted = 'internally_restricted',
+	submit = 'pending',
+	retract = 'internal',
+};
+export type StateAction = keyof typeof ActionState;
+
+export const stateActions: {
+	[state in State]: {
+		[text: string]: StateAction;
+	};
+} = {
+	internal: {
+		'Make private': 'hide',
+		'Publish externally': 'publish_externally',
+		'Publish internally': 'publish_internally',
+		'Publish restricted': 'publish_restricted',
+		'Submit for publication': 'submit',
+	},
+	private: {
+		'Publish externally': 'publish_externally',
+		'Publish internally': 'publish_internally',
+		'Show internally': 'show_internally',
+	},
+	external: {
+		'Retract': 'retract',
+	},
+	internally_published: {
+		'Publish externally': 'publish_externally',
+		'Retract': 'retract',
+	},
+	internally_restricted: {
+		'Retract': 'retract',
+	},
+	pending: {
+		'Publish externally': 'publish_externally',
+		'Publish internally': 'publish_internally',
+		'Publish restricted': 'publish_restricted',
+		'Retract': 'retract',
+	},
+};
 
 export interface WithState extends PloneObject {
 	state: State;
+	changeState(stateAction: StateAction): Promise<void>;
 }
 
 export function isWithState(ploneObject: PloneObject): ploneObject is WithState {
@@ -81,11 +118,7 @@ export enum PortletManagerSides {
 }
 
 export type PortletManagers = {
-	// [side in PortletSideType]: PortletManager<side>;
-	top: PortletManager<'top'>,
-	right: PortletManager<'right'>,
-	bottom: PortletManager<'bottom'>,
-	left: PortletManager<'left'>,
+	[S in PortletSideType]: PortletManager<S>;
 }
 
 export interface WithPortlets extends PloneObject {

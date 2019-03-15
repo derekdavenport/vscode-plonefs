@@ -1,20 +1,19 @@
 import * as vscode from 'vscode';
-import { post, Mode, linefeed } from '../util';
-import { RequestOptions } from 'https';
-import { BaseFile } from '.';
+import * as Form from 'form-data';
+import { Mode, linefeed } from '../util';
+import { BaseFile, PloneObjectOptions } from '.';
 
 export default class File extends BaseFile {
 	language: string;
 	state: null;
 
-	constructor(uri: vscode.Uri, exists = false) {
-		super(uri, exists);
-		this.state = null;
+	constructor(options: PloneObjectOptions) {
+		super(options);
 		this.language = 'plaintext';
 	}
 
-	protected async _load(cookie: string): Promise<boolean> {
-		const loaded = super._load(cookie);
+	protected async _load(): Promise<void> {
+		const loadPromise = super._load();
 
 		const languagesPromise = vscode.languages.getLanguages();
 		const contentTypeBuffer = this.settings.get('content_type');
@@ -30,7 +29,7 @@ export default class File extends BaseFile {
 				this.language = type;
 			}
 		}
-		return loaded;
+		return loadPromise;
 	}
 
 	// File has no Python section
@@ -83,36 +82,25 @@ export default class File extends BaseFile {
 	// 	return this.loaded = true;
 	// }
 
-	async save(cookie: string) {
+	async save(): Promise<void> {
 		let savePath = this.uri.path;
 		if (!this.exists) {
-			//return await this.create(cookie);
-			// plone does not allow empty files
-			this.data = Buffer.from('\n');
-			savePath = await this.getNewSavePath(cookie);
+			savePath = await this.getNewSavePath();
 		}
-		// Plone cannot update with empty data
 		if (!this.data.length) {
-			return false;
+			// plone does not allow empty files
+			this.data = File.LINEFEED_BUFFER;
 		}
-		const postData = {
-			id: this.name,
-			title: this.name,
-			'form.submitted': '1',
-			file_file: {
-				filename: this.name,
-				data: this.data,
-			},
-		};
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: savePath + '/atct_edit',
-			headers: { cookie },
-		};
-		const response = await post(options, postData);
+
+		const body = new Form();
+		body.append('id', this.name);
+		body.append('title', this.title || this.name);
+		body.append('form.submitted', '1');
+		body.append('file_file', this.data, { filename: this.name });
+		const response = await this.client.post(savePath + '/atct_edit', { body });
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
-		return this.exists = true;
+		this.exists = true;
 	}
 }

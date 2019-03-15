@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import { BaseFile } from ".";
-import { Cookie } from "../../PloneFS";
-import { get, getBuffer, post } from "../util";
+import * as Form from 'form-data';
+import { BaseFile, PloneObjectOptions } from ".";
 import { parse, HTMLElement } from 'node-html-parser';
 
 export default class Portlet extends BaseFile {
@@ -10,8 +9,8 @@ export default class Portlet extends BaseFile {
 	moreUrl: string;
 	authenticator: string;
 	inputs: { [name: string]: string };
-	constructor(uri: vscode.Uri, exists = false) {
-		super(uri, exists);
+	constructor(options: PloneObjectOptions) {
+		super(options);
 
 		this.omitBorder = '';
 		this.footer = '';
@@ -20,23 +19,13 @@ export default class Portlet extends BaseFile {
 		this.inputs = {};
 	}
 
-	protected async _load(cookie: Cookie) {
-		const options = {
-			host: this.uri.authority,
-			path: this.uri.path + '/edit',
-			headers: { cookie },
-		};
-		const response = await get(options);
-		if (response.statusCode === 302) {
-			this.loading = false;
-			throw vscode.FileSystemError.NoPermissions(this.uri);
-		}
-		else if (response.statusCode !== 200) {
-			this.loading = false;
+	protected async _load(): Promise<void> {
+		const response = await this.client(this.uri.path + '/edit', { encoding: 'utf8' }); //.text();
+		this.loading = false;
+		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
-		const buffer = await getBuffer(response);
-		const root = parse(buffer.toString()) as HTMLElement;
+		const root = parse(response.body) as HTMLElement;
 		// node-html-parser unable to understand id or class with . in it or tag with attribute selector
 		// textarea#form\.text
 		const form = root.querySelector('.kssattr-formname-edit');
@@ -55,26 +44,21 @@ export default class Portlet extends BaseFile {
 			}
 			return inputs;
 		}, this.inputs);
-		return this.loaded = true;
+		this.loaded = true;
 	}
 
-	async save(cookie: Cookie) {
-		const options = {
-			host: this.uri.authority,
-			path: this.uri.path + '/edit',
-			headers: { cookie },
+	async save() {
+		const body = new Form();
+		for (const [key, value] of Object.entries(this.inputs)) {
+			body.append(key, value);
 		}
-		const postData = {
-			...this.inputs,
-			//referer: this.path.dir + '/@@manage-portlets',
-			'form.text': this.data.toString(),
-			'form.actions.save': 'Save',
-		};
-		const response = await post(options, postData);
+		body.append('form.text', this.data);
+		body.append('form.actions.save', 'Save');
+		const response = await this.client.post(this.uri.path + '/edit', { body });
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
 		// portlets cannot be renamed
-		return this.exists = true;
+		this.exists = true;
 	}
 }

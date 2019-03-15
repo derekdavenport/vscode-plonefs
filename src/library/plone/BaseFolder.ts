@@ -1,28 +1,26 @@
-import * as vscode from 'vscode';
-import { PloneObject, Entry } from ".";
-import { Cookie } from '../../PloneFS';
+import { PloneObject, PloneObjectOptions, Entry } from ".";
 
 export default abstract class BaseFolder extends PloneObject {
 	abstract entries: Map<string, Entry>;
 	loadingEntries: boolean;
-	loadingEntriesPromise: Promise<boolean>;
+	loadingEntriesPromise: Promise<void>;
 	loadedEntries: boolean;
 
-	constructor(uri: vscode.Uri, exists = false) {
-		super(uri, exists);
+	constructor(options: PloneObjectOptions) {
+		super(options);
 
 		this.loadingEntries = false;
 		this.loadedEntries = false;
-		this.loadingEntriesPromise = Promise.resolve(false);
+		this.loadingEntriesPromise = Promise.resolve();
 	}
 
-	loadEntries(cookie: Cookie): Promise<boolean> {
+	loadEntries(): Promise<void> {
 		if (this.loadingEntries) {
 			return this.loadingEntriesPromise;
 		}
 		this.loadingEntries = true;
-		return this.loadingEntriesPromise = this._loadEntries(cookie);
+		return this.loadingEntriesPromise = this._loadEntries();
 	}
 
-	protected abstract async _loadEntries(cookie: Cookie): Promise<boolean>;
+	protected abstract async _loadEntries(): Promise<void>;
 }

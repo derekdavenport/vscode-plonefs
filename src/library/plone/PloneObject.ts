@@ -2,14 +2,24 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as url from 'url';
-import { get, post, getBuffer, linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
-import { RequestOptions } from 'https';
-import { Cookie } from '../../PloneFS';
-import { State } from '.';
+import * as Form from 'form-data';
+import { linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
+import { State, StateAction, ActionState } from '.';
+import * as got from 'got';
+
+export interface PloneObjectOptions {
+	client: got.GotFn;
+	uri: vscode.Uri;
+	exists?: boolean;
+}
 
 export default abstract class PloneObject implements vscode.FileStat {
-	static readonly savedText = Buffer.from('saved');
 	static readonly type_name: string | undefined;
+
+	static readonly EMPTY_BUFFER = Buffer.from('');
+	static readonly LINEFEED_BUFFER = Buffer.from('\n');
+	static readonly TRUE_BUFFER = Buffer.from('True');
+	static readonly SAVED_BUFFER = Buffer.from('saved');;
 
 	type: vscode.FileType;
 	ctime: number;
@@ -42,9 +52,9 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	loading: boolean;
 	loaded: boolean;
-	loadingPromise: Promise<boolean>;
+	loadingPromise: Promise<void>;
 
-	protected abstract _load(cookie: string): Promise<boolean>;
+	protected abstract _load(): Promise<void>;
 
 	exists: boolean;
 
@@ -52,11 +62,14 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	settings: Map<string, Buffer>;
 
-	constructor(uri: vscode.Uri, exists = false) {
+	client: got.GotFn;
+
+	constructor(options: PloneObjectOptions) {
+		this.client = options.client;
 		this.type = vscode.FileType.Unknown;
 		this.ctime = this.mtime = Date.now();
 		this.size = 0;
-		this.uri = uri;
+		this.uri = options.uri;
 		// TODO: move title and description out of settings
 		this.title = this.name;
 		this.description = '';
@@ -64,73 +77,64 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 		this.loading = false;
 		this.loaded = false;
-		this.loadingPromise = Promise.resolve(false);
+		this.loadingPromise = Promise.resolve();
 
 		this.state = null;
 
-		this.exists = exists;
+		this.exists = options.exists || false;
 		this.settings = new Map<string, Buffer>();
 	}
-
-	load(cookie: Cookie): Promise<boolean> {
+	protected async _changeState(stateAction: StateAction) {
+		const requestPath = this.uri.path + '/content_status_modify?workflow_action=' + stateAction;
+		const response = await this.client(requestPath);
+		if (response.statusCode !== 302) {
+			throw vscode.FileSystemError.Unavailable();
+		}
+		this.state = ActionState[stateAction];
+	}
+	load(): Promise<void> {
 		if (this.loading) {
 			return this.loadingPromise;
 		}
 		this.loading = true;
-		return this.loadingPromise = this._load(cookie);
+		return this.loadingPromise = this._load()
+			.then(() => { this.loading = false; this.loaded = true; })
+			.catch(() => { this.loading = false });
 	}
 
-	async loadDetails(cookie: Cookie): Promise<void> {
+	async loadDetails(): Promise<void> {
 		type Details = {
 			title: string;
 			description: string;
 		};
-		const response = await get({
-			host: this.uri.authority,
-			path: this.uri.path + '/tinymce-jsondetails',
-			headers: { cookie },
-		});
+		const response = await this.client(this.uri.path + '/tinymce-jsondetails', { json: true });//.json();
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(this.uri);
 		}
-		const buffer = await getBuffer(response);
-		const details: Details = JSON.parse(buffer.toString());
+		const details: Details = response.body;
 		this.title = details.title;
 		this.description = details.description;
 	}
 
-	async loadExcludeFromNav(cookie: Cookie) {
-		const response = await get({
-			host: this.uri.authority,
-			path: this.uri.path + '/exclude_from_nav',
-			headers: { cookie },
-		});
+	async loadExcludeFromNav() {
+		const response = await this.client(this.uri.path + '/exclude_from_nav');
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(this.uri);
 		}
-		const buffer = await getBuffer(response);
-		this.excludeFromNav = buffer.equals(Buffer.from('True'));
+		this.excludeFromNav = response.body.equals(PloneObject.TRUE_BUFFER);
 	}
 
-	protected async _loadExternalBuffer(cookie: Cookie): Promise<Buffer> {
+	protected async _loadExternalBuffer(): Promise<Buffer> {
 		const externalEditPath = this.path.dir + '/externalEdit_/' + this.path.base;
-		const response = await get({
-			host: this.uri.authority,
-			path: externalEditPath,
-			headers: { cookie },
-		});
-		if (response.statusCode === 302) {
-			this.loading = false;
-			throw vscode.FileSystemError.NoPermissions(this.uri);
-		}
-		else if (response.statusCode !== 200) {
-			this.loading = false;
+		const response = await this.client(externalEditPath);
+		this.loading = false;
+		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
-		return getBuffer(response);
+		return response.body;
 	}
 
-	async saveSetting(settingName: string, cookie: string): Promise<boolean> {
+	async saveSetting(settingName: string): Promise<boolean> {
 		if (!this.exists) {
 			throw vscode.FileSystemError.Unavailable('does not exist');
 		}
@@ -138,27 +142,16 @@ export default abstract class PloneObject implements vscode.FileStat {
 		if (setting === undefined) {
 			throw vscode.FileSystemError.Unavailable('no setting ' + settingName);
 		}
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/tinymce-save',
-			headers: { cookie },
-		};
-		const postData = {
-			fieldname: settingName,
-			text: setting.toString(), // TODO: support buffer?
-		};
-		const response = await post(options, postData);
-		const buffer = await getBuffer(response);
-		const success = buffer.equals(PloneObject.savedText);
+		const body = new Form();
+		body.append('fieldname', settingName)
+		body.append('text', setting);
+		const response = await this.client.post(this.uri.path + '/tinymce-save', { body });
+		const success = response.body.equals(PloneObject.SAVED_BUFFER);
 		if (!success) {
-			throw vscode.FileSystemError.Unavailable(buffer.toString());
+			throw vscode.FileSystemError.Unavailable(response.body.toString());
 		}
 		// changes will only show on View page unless reindexed
-		get({
-			host: this.uri.authority,
-			path: this.uri.path + '/reindexObject',
-			headers: { cookie },
-		});
+		this.client(this.uri.path + '/reindexObject');
 		return success;
 	}
 
@@ -174,12 +167,9 @@ export default abstract class PloneObject implements vscode.FileStat {
 	// 	);
 	// }
 
-	async getNewSavePath(cookie: string) {
-		const response = await get({
-			host: this.uri.authority,
-			path: this.path.dir + '/createObject?type_name=' + ((this.constructor as typeof PloneObject).type_name || this.constructor.name),
-			headers: { cookie },
-		});
+	async getNewSavePath() {
+		const createPath = this.path.dir + '/createObject?type_name=' + ((this.constructor as typeof PloneObject).type_name || this.constructor.name);
+		const response = await this.client(createPath);
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
@@ -248,59 +238,36 @@ export default abstract class PloneObject implements vscode.FileStat {
 		}
 	}
 
-	async save(cookie: string) {
+	async save() {
 		// if doesn't exist, create
-		const savePath = this.exists ? this.uri.path : await this.getNewSavePath(cookie);
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: savePath + '/atct_edit',
-			headers: { cookie },
-		};
-		const postData = {
-			id: this.name,
-			title: this.title || this.name,
-			'form.submitted': 1,
-		};
-		const response = await post(options, postData);
+		const savePath = this.exists ? this.uri.path : await this.getNewSavePath();
+		const body = new Form();
+		body.append('id', this.name);
+		body.append('title', this.title || this.name);
+		body.append('form.submitted', 1);
+		const response = await this.client.post(savePath + '/atct_edit', { body });
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
 		// in case of rename
 		// TODO: make newName a param or something?
 		this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
-		return this.exists = true;
+		this.exists = true
 	}
 
-	private async _cutCopy(cookie: Cookie, action: 'cut' | 'copy'): Promise<Cookie> {
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/object_' + action,
-			headers: { cookie },
-		};
-		const response = await get(options);
+	private async _cutCopy(action: 'cut' | 'copy'): Promise<void> {
+		const response = await this.client(this.uri.path + '/object_' + action);
 		// 302 should mean success
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}
-		// need __cp cookie which identifies what was cut
-		const cookieHeaders = response.headers['set-cookie'];
-		if (!cookieHeaders) {
-			throw vscode.FileSystemError.Unavailable('no cookies');
-		}
-		for (const cookieHeader of cookieHeaders) {
-			if (cookieHeader && cookieHeader.startsWith('__cp=')) {
-				return cookieHeader.split(';')[0];
-			}
-		}
-		throw vscode.FileSystemError.Unavailable('no ' + action + ' cookie');
-
 	}
 
-	cut(cookie: Cookie): Promise<Cookie> {
-		return this._cutCopy(cookie, 'cut');
+	cut(): Promise<void> {
+		return this._cutCopy('cut');
 	}
 
-	copy(cookie: Cookie): Promise<Cookie> {
-		return this._cutCopy(cookie, 'copy');
+	copy(): Promise<void> {
+		return this._cutCopy('copy');
 	}
 }

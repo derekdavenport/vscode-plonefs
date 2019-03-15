@@ -1,8 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
-import { PloneObject } from ".";
-import { post, getBuffer } from '../util';
-import { RequestOptions } from 'https';
+import * as Form from 'form-data';
+import { PloneObject, PloneObjectOptions } from ".";
 
 /**
  * A Plone Object with data
@@ -11,37 +10,30 @@ export default abstract class BaseFile extends PloneObject {
 	data: Uint8Array;
 	static readonly fieldname: string;
 
-	constructor(uri: vscode.Uri, exists = false) {
-		super(uri, exists);
+	constructor(options: PloneObjectOptions) {
+		super(options);
 		this.type = vscode.FileType.File;
-		this.data = Buffer.from('');
+		this.data = BaseFile.EMPTY_BUFFER;
 	}
 
-	async save(cookie: string): Promise<boolean> {
+	async save(): Promise<void> {
 		// if doesn't exist or a rename, need full save
 		// TODO: make rename a separate function using POST setId value: id
 		if (!this.exists || this.path.base !== this.name) {
-			return super.save(cookie);
+			return super.save();
 		}
-		// this is a quick save
+		// this is a quick save and will not make an entry in edit history
 		// TODO: make tinymce save its own function so code not duplicated in saveSetting
-		const options: RequestOptions = {
-			host: this.uri.authority,
-			path: this.uri.path + '/tinymce-save',
-			headers: { cookie },
-		};
-		const postData = {
-			fieldname: (this.constructor as typeof BaseFile).fieldname,
-			text: this.data.toString(), // TODO: support buffer?
-		};
-		const response = await post(options, postData);
-		const buffer = await getBuffer(response);
-		return this.exists = buffer.equals(BaseFile.savedText);
+		const body = new Form();
+		body.append('fieldname', (this.constructor as typeof BaseFile).fieldname);
+		body.append('text', this.data);
+		const response = await this.client.post(this.uri.path + '/tinymce-save', { body });//.buffer();
+		this.exists = response.body.equals(BaseFile.SAVED_BUFFER);
 	}
 
-	protected async _load(cookie: string): Promise<boolean> {
-		const buffer = await this._loadExternalBuffer(cookie);
+	protected async _load(): Promise<void> {
+		const buffer = await this._loadExternalBuffer();
 		this.data = this.parseExternalEdit(buffer);
-		return this.loaded = true;
+		this.loaded = true;
 	}
 }
