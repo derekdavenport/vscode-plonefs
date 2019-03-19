@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { Page, NewsItem, File, LocalCss, Entry, Event, Topic, State, WithState, WithLocalCss, WithPortlets, PortletManagers, PortletManager, BaseFolder, PloneObjectOptions, StateAction } from '.';
-import * as Form from 'form-data';
 
 interface FolderOptions extends PloneObjectOptions {
 	isRoot?: boolean;
@@ -59,10 +58,10 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 		this.portletManagers = {
-			top:    new PortletManager({ client: this.client, parentUri: this.uri, side: 'top' }),
-			right:  new PortletManager({ client: this.client, parentUri: this.uri, side: 'right' }),
+			top: new PortletManager({ client: this.client, parentUri: this.uri, side: 'top' }),
+			right: new PortletManager({ client: this.client, parentUri: this.uri, side: 'right' }),
 			bottom: new PortletManager({ client: this.client, parentUri: this.uri, side: 'bottom' }),
-			left:   new PortletManager({ client: this.client, parentUri: this.uri, side: 'left' }),
+			left: new PortletManager({ client: this.client, parentUri: this.uri, side: 'left' }),
 		};
 	}
 
@@ -121,10 +120,11 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 			topic: Topic,
 			file: File,
 		};
-		const body = new Form();
-		body.append('rooted', 'False');
-		body.append('document_base_url', 'https://' + this.uri.authority + this.uri.path + '/',);
-		const response = await this.client.post(this.uri.path + '/tinymce-jsonlinkablefolderlisting', { body, encoding: 'utf8' });
+		const body = {
+			rooted: 'False',
+			document_base_url: 'https://' + this.uri.authority + this.uri.path + '/',
+		};
+		const response = await this.client.post(this.uri.path + '/tinymce-jsonlinkablefolderlisting', { form: true, body, encoding: 'utf8' });
 		this.loadingEntries = false;
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable('could not load folder entries.\n' + response.statusCode + ': ' + response.statusMessage);

@@ -1,42 +1,32 @@
 'use strict';
 import * as vscode from 'vscode';
-import PloneFS, { CookieStore } from './PloneFS';
-import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
+import { IncomingMessage } from 'http';
+import { globalAgent } from 'https';
+import { Duplex } from 'stream';
+import * as src from 'ssl-root-cas';
 import * as got from 'got';
 import { CookieJar } from 'tough-cookie';
-import * as Form from 'form-data';
-import { globalAgent } from 'https';
-import * as src from 'ssl-root-cas';
+import PloneFS, { CookieStore } from './PloneFS';
+import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
+
 
 // add missing intermediate cert for stage.louisville.edu
-const rootCas = src.create();
-rootCas.addFile(__dirname + '/../ssl/globalsign-org.cer');
-globalAgent.options.ca = rootCas;
+globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-org.cer');
 
+// add missing got declarations
 declare module 'got' {
-	interface GotFn {
-		(url: GotUrl): GotPromise<Buffer>;
-		// (url: GotUrl): GotPromise<string> & { text(): GotPromise<string>; json(): GotPromise<any>; buffer(): GotPromise<Buffer> };
-		// (url: GotUrl, options: GotJSONOptions): GotPromise<any>;
-		// (url: GotUrl, options: GotFormOptions<string>): GotPromise<string>;
-		// (url: GotUrl, options: GotFormOptions<null>): GotPromise<Buffer>;
-		// (url: GotUrl, options: GotBodyOptions<string>): GotPromise<string>;
-		// (url: GotUrl, options: GotBodyOptions<null>): GotPromise<Buffer>;
-		extend(options: GotJSONOptions): GotFn;
-		extend(options: GotFormOptions<null>): GotFn;
-		extend(options: GotFormOptions<string>): GotFn;
-		extend(options: GotBodyOptions<null>): GotFn;
-		extend(options: GotBodyOptions<string>): GotFn;
-		post(url: GotUrl): GotPromise<Buffer>; // & { buffer(): GotPromise<Buffer>; };
-		post(url: GotUrl, options: GotJSONOptions): GotPromise<any>;
-		post(url: GotUrl, options: GotFormOptions<null>): GotPromise<Buffer>;
-		post(url: GotUrl, options: GotFormOptions<string>): GotPromise<string>;
-		post(url: GotUrl, options: GotBodyOptions<null>): GotPromise<Buffer>;
-		post(url: GotUrl, options: GotBodyOptions<string>): GotPromise<string>; // & { json(): GotPromise<any>; buffer(): GotPromise<Buffer> };
+	type FixedGotStreamFn = (url: GotUrl, options?: GotOptions<string | null> | GotFormOptions<string | null>) => GotEmitter & Duplex;
+	interface GotFn<E extends string | null = null> extends Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', got.GotFn<E>> {
+		(url: GotUrl): GotPromise<E extends string ? string : Buffer>;
+		(url: GotUrl, options: GotJSONOptions): GotPromise<any>;
+		(url: GotUrl, options: GotFormOptions<E>): GotPromise<E extends string ? string : Buffer>;
+		(url: GotUrl, options: GotBodyOptions<E>): GotPromise<E extends string ? string : Buffer>;
+		extend(options: GotJSONOptions): GotFn<string>;
+		extend(options: GotFormOptions<E>): GotFn<E>;
+		extend(options: GotBodyOptions<E>): GotFn<E>;
+		stream: FixedGotStreamFn & Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', FixedGotStreamFn>;
 	}
 }
-
-const cookieStoreName = 'cookieStore';
 
 enum StateColor {
 	internal = 'white',
@@ -87,19 +77,30 @@ interface PortletsAction {
 type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction | PortletsAction;
 
 export type Roots = { [siteName: string]: Folder; };
+type CookieJarStore = { [siteName: string]: CookieJar.Serialized };
+
+const cookieStoreName = 'cookieStore';
 export async function activate(context: vscode.ExtensionContext) {
 	if (vscode.workspace.workspaceFolders !== undefined) {
 		let roots: Roots = {};
 		for (const folder of vscode.workspace.workspaceFolders) {
 			if (folder.uri.scheme === 'plone') {
 				const siteName = getSiteName(folder.uri);
-				const testCookieJar = new CookieJar();
-				const testSerializedCookieJar = testCookieJar.serializeSync();
-				let serializedCookieJar = context.globalState.get<CookieJar.Serialized>('PloneFScookieJar-' + siteName, testSerializedCookieJar);
-				if (serializedCookieJar === null) {
-					serializedCookieJar = testSerializedCookieJar;
+				const cookieJarStore = context.globalState.get<CookieJarStore>(cookieStoreName, {});
+				const serializedJar = cookieJarStore[siteName];
+				let cookieJar: CookieJar;
+				if (serializedJar) {
+					try {
+						cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName])
+					}
+					catch (e) {
+						cookieJar = new CookieJar();
+					}
 				}
-				const cookieJar = CookieJar.deserializeSync(serializedCookieJar);
+				else {
+					cookieJar = new CookieJar();
+				}
+
 				const gotOptions: got.GotBodyOptions<null> = {
 					encoding: null, // default to buffer
 					followRedirect: false,
@@ -110,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext) {
 							async (response, retry) => {
 								if (response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>") { // Unauthorized
 									if (await login(client, folder.uri)) {
-										context.globalState.update('PloneFScookieJar-' + siteName, cookieJar.serializeSync());
+										context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
 										return retry({});
 									}
 								}
@@ -125,9 +126,6 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (test.statusCode === 200) {
 					const uri = folder.uri.with({ scheme: 'plone' });
 					roots[siteName] = new Folder({ client, uri, exists: true, isRoot: true });
-				}
-				else {
-					context.globalState.update('PloneFScookieJar-' + siteName, null);
 				}
 			}
 		}
@@ -170,7 +168,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
-			async function showPortletSidePicker(entry: WithPortlets) {
+			async function showPortletSidePicker(entry: WithPortlets): Promise<void> {
 				const side = await vscode.window.showQuickPick(Object.keys(PortletSides), {
 					placeHolder: 'Pick Portlet Side',
 				}) as keyof typeof PortletSides | undefined;
@@ -180,15 +178,32 @@ export async function activate(context: vscode.ExtensionContext) {
 				showPortlets(entry.portletManagers[side]);
 			}
 
-			async function showPortlets(portletManager: PortletManager) {
+			async function showPortlets(portletManager: PortletManager): Promise<void> {
 				await portletManager.loadEntries();
-				const portletName = await vscode.window.showQuickPick([...portletManager.entries.keys()], {
+				const newPortletOption = '$(file-add) new';
+				const pickMap = [...portletManager.entries.entries()].reduce((pickMap, [name, portlet]) => {
+					pickMap[`${portlet.title} (${name})`] = name;
+					return pickMap;
+				}, {} as Record<string, string>);
+				const pick = await vscode.window.showQuickPick([...Object.keys(pickMap), newPortletOption], {
 					placeHolder: 'Pick Portlet',
 				});
-				if (!portletName) {
+				if (!pick) {
 					return;
 				}
-				const portlet = portletManager.entries.get(portletName);
+				let name: string | undefined;
+				if (pick === newPortletOption) {
+					const header = await vscode.window.showInputBox({ prompt: 'Portlet header' });
+					if (header === undefined) {
+						return;
+					}
+					await portletManager.add(header);
+					return showPortlets(portletManager);
+				}
+				else {
+					name = pickMap[pick];
+				}
+				const portlet = portletManager.entries.get(name);
 				if (portlet) {
 					try {
 						await vscode.window.showTextDocument(portlet.uri);
@@ -452,8 +467,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (uriValue === undefined) {
 				return;
 			}
-			// remove a final slash
-			uriValue = uriValue.replace(/\/+$/, '');
+			// remove protocol and/or a final slash
+			uriValue = uriValue.replace(/^https?:\/\/|\/+$/g, '');
 			uri = vscode.Uri.parse('plone://' + uriValue);
 			if (uri) {
 				vscode.workspace.updateWorkspaceFolders(
@@ -492,18 +507,25 @@ async function login(client: got.GotFn, uri: vscode.Uri): Promise<boolean | unde
 			return;
 		}
 
-		//cookie = await PloneFS.login(uri, { username, password });
-		const body = new Form();
-		// this makes 302 = success
-		body.append('came_from', uri.path);
-		body.append('__ac_name', username);
-		body.append('__ac_password', password);
-		body.append('form.submitted', 1);
-		const response = await client.post(uri.path + '/login_form', { body });
+		const body = {
+			came_from: uri.path,
+			__ac_name: username,
+			__ac_password: password,
+			'form.submitted': 1,
+		};
+		const stream = client.stream.post(uri.path + '/login_form', { form: true, body, throwHttpErrors: false });
+		const response = await getResponse(stream);
 		return response.statusCode === 302;
 	}
 }
 
 function getSiteName(uri: vscode.Uri): string {
 	return uri.authority + uri.path;
+}
+
+function getResponse(stream: got.GotEmitter) {
+	return new Promise<IncomingMessage>((resolve, reject) => {
+		stream.on('response', response => resolve(response));
+		stream.on('error', error => reject(error));
+	});
 }

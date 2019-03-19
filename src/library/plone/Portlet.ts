@@ -37,6 +37,7 @@ export default class Portlet extends BaseFile {
 		this.data = Buffer.from(textarea.text);
 		this.inputs = form.querySelectorAll('input').reduce((inputs, input) => {
 			if (
+				input.attributes.name !== 'form.header' &&
 				input.attributes.type !== 'submit' &&
 				(input.attributes.type !== 'checkbox' || input.attributes.checked)
 			 ) {
@@ -48,13 +49,15 @@ export default class Portlet extends BaseFile {
 	}
 
 	async save() {
+		const savePath = this.exists ? this.uri.path + '/edit' : this.path.dir + '/+/plone.portlet.static.Static';
 		const body = new Form();
 		for (const [key, value] of Object.entries(this.inputs)) {
 			body.append(key, value);
 		}
-		body.append('form.text', this.data);
+		body.append('form.header', this.title);
+		body.append('form.text', this.data); // can't be empty
 		body.append('form.actions.save', 'Save');
-		const response = await this.client.post(this.uri.path + '/edit', { body });
+		const response = await this.client.post(savePath, { body });
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}

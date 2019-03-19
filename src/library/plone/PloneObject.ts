@@ -2,10 +2,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as url from 'url';
-import * as Form from 'form-data';
+import * as got from 'got';
 import { linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLineKeys, indent, blankLine } from '../util';
 import { State, StateAction, ActionState } from '.';
-import * as got from 'got';
 
 export interface PloneObjectOptions {
 	client: got.GotFn;
@@ -142,10 +141,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 		if (setting === undefined) {
 			throw vscode.FileSystemError.Unavailable('no setting ' + settingName);
 		}
-		const body = new Form();
-		body.append('fieldname', settingName)
-		body.append('text', setting);
-		const response = await this.client.post(this.uri.path + '/tinymce-save', { body });
+		const body = {
+			fieldname: settingName,
+			text: setting,
+		};
+		const response = await this.client.post(this.uri.path + '/tinymce-save', { form: true, body });
 		const success = response.body.equals(PloneObject.SAVED_BUFFER);
 		if (!success) {
 			throw vscode.FileSystemError.Unavailable(response.body.toString());
@@ -241,11 +241,12 @@ export default abstract class PloneObject implements vscode.FileStat {
 	async save() {
 		// if doesn't exist, create
 		const savePath = this.exists ? this.uri.path : await this.getNewSavePath();
-		const body = new Form();
-		body.append('id', this.name);
-		body.append('title', this.title || this.name);
-		body.append('form.submitted', 1);
-		const response = await this.client.post(savePath + '/atct_edit', { body });
+		const body = {
+			'id': this.name,
+			'title': this.title || this.name,
+			'form.submitted': 1,
+		};
+		const response = await this.client.post(savePath + '/atct_edit', { form: true, body });
 		if (response.statusCode !== 302) {
 			throw vscode.FileSystemError.Unavailable(response.statusCode + ' ' + response.statusMessage);
 		}

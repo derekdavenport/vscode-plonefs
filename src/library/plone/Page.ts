@@ -1,5 +1,4 @@
 import { FileSystemError } from 'vscode';
-import * as Form from 'form-data';
 import { Document } from '.';
 import { copyMatch } from '../util';
 /**
@@ -22,10 +21,11 @@ export default class Page extends Document {
 	}
 
 	async checkIn(message: string): Promise<string> {
-		const body = new Form();
-		body.append('checkin_message', message);
-		body.append('form.button.Checkin', 'Check+in');
-		const response = await this.client.post(this.uri.path + '/@@content-checkin', { body });
+		const body = {
+			'checkin_message': message,
+			'form.button.Checkin': 'Check+in',
+		};
+		const response = await this.client.post(this.uri.path + '/@@content-checkin', { form: true, body });
 		if (response.statusCode !== 302) {
 			throw FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
 		}
@@ -49,9 +49,10 @@ export default class Page extends Document {
 	}
 
 	async cancelCheckOut(): Promise<void> {
-		const body = new Form();
-		body.append('form.button.Cancel', 'Cancel+checkout');
-		const response = await this.client.post(this.uri.path + '/@@content-cancel-checkout', { body });
+		const body = {
+			'form.button.Cancel': 'Cancel+checkout',
+		};
+		const response = await this.client.post(this.uri.path + '/@@content-cancel-checkout', { form: true, body });
 		if (response.statusCode !== 302) {
 			throw FileSystemError.Unavailable(response.statusCode + ': ' + response.statusMessage);
 		}
