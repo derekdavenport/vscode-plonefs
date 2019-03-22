@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.4.0
+
+- Added support for Portlets
+- Added ability to log in again after login expires
+- Fixed sometimes unable to change State
+- Fixed unable to open Plone Options on root folder
+
 ## 0.3.3
 
 - Fixed unable to open Local CSS

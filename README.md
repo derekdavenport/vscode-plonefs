@@ -24,6 +24,24 @@ Open Plone sites in Visual Studio Code
 
 Note: Files do not have State. The Title and State are also displayed on the status bar for the current active document and can be edited by clicking on them.
 
+### Creating a Text Portlet
+
+* Right-click a File or Folder in Visual Studio Code Explorer
+* Select "Plone Options"
+* Select "Portlets"
+* Select a side
+* Select "+ new"
+* Enter a Header for the Portlet
+* You will be taken back to the Portlets list with your new Portlet added
+
+### Editing a Text Portlet
+
+* Right-click a File or Folder in Visual Studio Code Explorer
+* Select "Plone Options"
+* Select "Portlets"
+* Select a side
+* Select the Text Portlet you want to edit (non Text Portlets are shown, but selecting one will give an error)
+
 ### Creating Working Copies
 
 * Right-click a Document in Visual Studio Code Explorer
@@ -41,13 +59,11 @@ Note: Folders, Files, and Collections cannot be checked out.
 * If the Document is a Working Copy, there will be options for "Check In" and "Cancel Check Out"
 * If you select "Check In" you will need to supply a check in message and press Enter / Return
 
-## Known bugs / missing features
+## Missing features
 
 * Cannot create new Event, News Item, or Collection
-* no support for "Exclude from Navigation" setting
-* checking in a working copy causes the original document if opened to be marked dirty (unsaved) even though it is saved
+* no "Exclude from Navigation" setting
+* checking in a working copy causes the original document if opened to be marked dirty (unsaved)
 * cannot edit site root folder Title / Description
-* cannot login again after cookie expires (workaround: close and reopen Visual Studio Code)
 * cannot delete
-* no support for portlets
 * no support for edit history ([source control](https://code.visualstudio.com/docs/extensionAPI/api-scm))
