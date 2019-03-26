@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.4.2
+
+- Enabled all folder options when a subfolder is added as the site root
+- Fixed unable to edit Local CSS when a subfolder is added as the site root
+
 ## 0.4.1
 
 - Hide title in status bar for LocalCss (has no title)
