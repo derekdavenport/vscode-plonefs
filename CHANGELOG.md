@@ -1,5 +1,12 @@
 # Change Log
 
+## 0.4.1
+
+- Hide title in status bar for LocalCss (has no title)
+- Hide state option for root folder (it has no state)
+- Fixed unable to change Portlet Header (requires full save to set)
+- Fixed unable to open subfolder as root (this works again, but is not recommended)
+
 ## 0.4.0
 
 - Added support for Portlets

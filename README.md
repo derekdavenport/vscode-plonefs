@@ -6,7 +6,7 @@ Open Plone sites in Visual Studio Code
 
 ### Open a Plone Site (Add Plone site to Workspace)
 
-* Press F1 to open the Command Pallet
+* Press F1 (Mac Command + Shift + P) to open the Command Pallet
 * Select "Plone File System: Add Plone site to Workspace" (search for "Plone")
 * A dropdown will appear with a list of previously used sites and "new"
 * Click on a site to open or "new" to open a new site
@@ -62,6 +62,7 @@ Note: Folders, Files, and Collections cannot be checked out.
 ## Missing features
 
 * Cannot create new Event, News Item, or Collection
+* Portlet header changes not saved until portlet saved
 * no "Exclude from Navigation" setting
 * checking in a working copy causes the original document if opened to be marked dirty (unsaved)
 * cannot edit site root folder Title / Description

@@ -6,7 +6,7 @@ import { Duplex } from 'stream';
 import * as src from 'ssl-root-cas';
 import * as got from 'got';
 import { CookieJar } from 'tough-cookie';
-import PloneFS, { CookieStore } from './PloneFS';
+import PloneFS from './PloneFS';
 import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
 
 
@@ -109,7 +109,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					hooks: {
 						afterResponse: [
 							async (response, retry) => {
-								if (response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>") { // Unauthorized
+								if ( // Unauthorized
+									response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>" ||
+									response.headers['bobo-exception-type'] === "<class 'AccessControl.unauthorized.Unauthorized'>"
+								) {
 									if (await login(client, folder.uri)) {
 										context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
 										return retry({});
@@ -243,7 +246,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			titleStatus.tooltip = 'Change title';
 
 			function setTitleStatus(entry: Entry) {
-				titleStatus.text = 'Title: ' + entry.title;
+				const label = (entry instanceof Portlet) ? 'Header: ' : 'Title: '
+				titleStatus.text = label + entry.title;
 				titleStatus.show();
 			}
 
@@ -287,7 +291,12 @@ export async function activate(context: vscode.ExtensionContext) {
 					else {
 						stateStatus.hide();
 					}
-					setTitleStatus(entry);
+					if (!(entry instanceof LocalCss)) {
+						setTitleStatus(entry);
+					}
+					else {
+						titleStatus.hide();
+					}
 				}
 				else {
 					stateStatus.hide();
@@ -297,8 +306,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			async function setSetting(entry: Entry, settingName: 'title' | 'description') {
 				const oldValue = entry[settingName];
+				const prompt = entry instanceof Portlet && settingName === 'title' ? 'Set header' : 'Set ' + settingName;
 				const singleLineValue = await vscode.window.showInputBox({
-					prompt: 'Set ' + settingName,
+					prompt,
 					// currently vscode only allows single-line input
 					value: oldValue.replace(/\r\n/g, '\\n'),
 					ignoreFocusOut: false,
@@ -308,10 +318,8 @@ export async function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 				// convert single-line input to multi-line
-				const newValue = singleLineValue.replace(/\\n/g, '\r\n')
-				entry[settingName] = newValue;
-				entry.settings.set(settingName, Buffer.from(newValue));
-				const success = await entry.saveSetting(settingName);
+				const newValue = singleLineValue.replace(/\\n/g, '\r\n');
+				const success = await entry.saveSetting(settingName, newValue);
 				if (success) {
 					vscode.window.showInformationMessage(`Set ${settingName}: ${singleLineValue}`);
 					if (settingName === 'title') {
@@ -328,13 +336,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (!(entry instanceof Folder && entry.isRoot)) {
 					await entry.loadDetails();
 					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
-					// TODO: support file description
-					//if (!(entry instanceof File)) {
 					optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
-					//}
-				}
-				if (isWithState(entry)) {
-					optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
+
+					// root folder does not have state
+					if (isWithState(entry)) {
+						optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
+					}
 				}
 				if (entry instanceof Page) {
 					const canCheckInPromise = entry.canCheckIn();
@@ -432,9 +439,11 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 
 			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.editSettings',
-				(uri: vscode.Uri) => {
-					optionsMenu(uri)
+				'plonefs.optionsMenu',
+				(uri?: vscode.Uri) => {
+					if (uri) {
+						optionsMenu(uri)
+					}
 				},
 			));
 			context.subscriptions.push(vscode.commands.registerCommand(
@@ -450,7 +459,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		let uri: vscode.Uri | undefined;
 		while (!uri) {
 			const newUriOption = '$(file-add) new';
-			const items = [...Object.keys(context.globalState.get<CookieStore>(cookieStoreName, {})).sort(), newUriOption];
+			const items = [...Object.keys(context.globalState.get<CookieJarStore>(cookieStoreName, {})).sort(), newUriOption];
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				ignoreFocusOut: true,

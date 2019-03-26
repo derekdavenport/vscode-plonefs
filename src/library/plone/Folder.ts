@@ -76,11 +76,11 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 		return this._changeState(stateAction);
 	}
 
-	saveSetting(settingName: string): Promise<boolean> {
+	saveSetting(settingName: 'title' | 'description', setting: string): Promise<boolean> {
 		if (this.isRoot) {
 			throw vscode.FileSystemError.Unavailable('cannot edit root folder');
 		}
-		return super.saveSetting(settingName);
+		return super.saveSetting(settingName, setting);
 		// TODO: title and description at the root require an authenticator
 		// not worth the trouble right now
 	}
@@ -138,8 +138,8 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 			if (item.normalized_type in classes) {
 				const entry = new classes[item.normalized_type]({ client: this.client, uri: vscode.Uri.parse(item.url).with({ scheme: 'plone' }), exists: true });
 				entry.state = item.review_state;
-				entry.title = item.title;
-				entry.description = item.description;
+				//entry._title = item.title;
+				//entry.description = item.description;
 				this.entries.set(item.id, entry);
 			}
 		}

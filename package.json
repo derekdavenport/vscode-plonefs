@@ -29,7 +29,7 @@
 				"category": "PloneFS"
 			},
 			{
-				"command": "plonefs.editSettings",
+				"command": "plonefs.optionsMenu",
 				"title": "Plone Options",
 				"category": "PloneFS"
 			},
@@ -47,19 +47,19 @@
 		"menus": {
 			"explorer/context": [
 				{
-					"command": "plonefs.editSettings",
+					"command": "plonefs.optionsMenu",
 					"group": "PloneFS",
 					"when": "resourceScheme == plone"
 				}
 			],
 			"commandPalette": [
 				{
-					"command": "plonefs.editSettings",
-					"when": "resourceScheme == plone"
+					"command": "plonefs.optionsMenu",
+					"when": "false"
 				},
 				{
 					"command": "plonefs.changeState",
-					"when": "resourceScheme == plone"
+					"when": "false"
 				}
 			]
 		}

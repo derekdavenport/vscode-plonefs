@@ -79,7 +79,7 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 			const name = editPath.substring(editPath.lastIndexOf('/') + 1);
 			const title = headerLink.text;
 			const portlet = new Portlet({ client: this.client, uri: this.uri.with({ path: this.uri.path + '/' + name }), exists: true });
-			portlet.title = title;
+			portlet.saveSetting('title', title); // doesn't actually save on Portlet...
 			this.entries.set(name, portlet);
 		}
 		this.loadedEntries = true;

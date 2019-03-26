@@ -19,16 +19,6 @@ export type Credentials = {
 	password: string;
 };
 
-export type Cookie = string;
-
-export type CookieStore = {
-	[uri: string]: Cookie;
-};
-
-type Root = {
-	folder: Folder,
-}
-
 export default class PloneFS implements vscode.FileSystemProvider {
 	private roots: Roots;
 
@@ -43,22 +33,6 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		for (const rootUriValue of rootUriValues) {
 			if (uriValue.indexOf(rootUriValue) === 0) {
 				return this.roots[rootUriValue];
-			}
-		}
-		// not found
-		throw vscode.FileSystemError.FileNotFound('no root folder found for ' + uriValue);
-	}
-
-	getRoot(uri: vscode.Uri): Root & { path: string } {
-		const uriValue = uri.authority + uri.path;
-		// sort longest to shortest
-		const rootUriValues = Object.keys(this.roots).sort((a, b) => b.length - a.length);
-		for (const rootUriValue of rootUriValues) {
-			if (uriValue.indexOf(rootUriValue) === 0) {
-				return {
-					folder: this.roots[rootUriValue],
-					path: uriValue.substring(rootUriValue.length),
-				}
 			}
 		}
 		// not found

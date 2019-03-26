@@ -45,7 +45,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 	set name(name: string) {
 		this._name = name;
 	}
-	title: string;
+	protected _title: string;
+
+	get title() {
+		return this._title;
+	}
 	description: string;
 	excludeFromNav: boolean;
 
@@ -59,18 +63,18 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	state: State | null;
 
-	settings: Map<string, Buffer>;
+	protected settings: Map<string, Buffer>;
 
 	client: got.GotFn;
 
-	constructor(options: PloneObjectOptions) {
-		this.client = options.client;
+	constructor({ client, uri, exists }: PloneObjectOptions) {
+		this.client = client;
 		this.type = vscode.FileType.Unknown;
 		this.ctime = this.mtime = Date.now();
 		this.size = 0;
-		this.uri = options.uri;
+		this.uri = uri;
 		// TODO: move title and description out of settings
-		this.title = this.name;
+		this._title = this.name;
 		this.description = '';
 		this.excludeFromNav = false;
 
@@ -80,7 +84,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 		this.state = null;
 
-		this.exists = options.exists || false;
+		this.exists = exists || false;
 		this.settings = new Map<string, Buffer>();
 	}
 	protected async _changeState(stateAction: StateAction) {
@@ -111,7 +115,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 			throw vscode.FileSystemError.Unavailable(this.uri);
 		}
 		const details: Details = response.body;
-		this.title = details.title;
+		this._title = details.title;
 		this.description = details.description;
 	}
 
@@ -133,14 +137,17 @@ export default abstract class PloneObject implements vscode.FileStat {
 		return response.body;
 	}
 
-	async saveSetting(settingName: string): Promise<boolean> {
+	async saveSetting(settingName: 'title' | 'description', setting: string): Promise<boolean> {
 		if (!this.exists) {
 			throw vscode.FileSystemError.Unavailable('does not exist');
 		}
-		const setting = this.settings.get(settingName);
-		if (setting === undefined) {
-			throw vscode.FileSystemError.Unavailable('no setting ' + settingName);
+		if (settingName === 'title') {
+			this._title = setting;
 		}
+		else {
+			this.description = setting;
+		}
+		this.settings.set(settingName, Buffer.from(setting));
 		const body = {
 			fieldname: settingName,
 			text: setting,
@@ -229,7 +236,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 				value = Buffer.concat([value, eol, buffer.slice(lineStart, lineEnd)]);
 			}
 			if (key === 'title') {
-				this.title = value.toString();
+				this._title = value.toString();
 			}
 			else if (key === 'description') {
 				this.description = value.toString();

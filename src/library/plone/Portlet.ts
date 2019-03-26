@@ -40,7 +40,7 @@ export default class Portlet extends BaseFile {
 				input.attributes.name !== 'form.header' &&
 				input.attributes.type !== 'submit' &&
 				(input.attributes.type !== 'checkbox' || input.attributes.checked)
-			 ) {
+			) {
 				inputs[input.attributes.name] = input.attributes.value;
 			}
 			return inputs;
@@ -63,5 +63,15 @@ export default class Portlet extends BaseFile {
 		}
 		// portlets cannot be renamed
 		this.exists = true;
+	}
+
+	async saveSetting(settingName: 'title' | 'description', setting: string): Promise<boolean> {
+		if (settingName === 'title') {
+			this._title = setting;
+			return true;
+		}
+		else {
+			throw vscode.FileSystemError.Unavailable('portlets have no description');
+		}
 	}
 }
