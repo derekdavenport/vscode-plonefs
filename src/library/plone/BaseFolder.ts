@@ -19,7 +19,10 @@ export default abstract class BaseFolder extends PloneObject {
 			return this.loadingEntriesPromise;
 		}
 		this.loadingEntries = true;
-		return this.loadingEntriesPromise = this._loadEntries();
+		this.loadingEntriesPromise = this._loadEntries()
+			.then(() => { this.loadedEntries = true; })
+			.finally(() => { this.loadingEntries = false });
+		return this.loadingEntriesPromise;
 	}
 
 	protected abstract async _loadEntries(): Promise<void>;

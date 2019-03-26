@@ -64,7 +64,6 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 
 	protected async _loadEntries(): Promise<void> {
 		const response = await this.client(this.path.dir + '/@@manage-portlets', { encoding: 'utf8' }); //.text();
-		this.loadingEntries = false;
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(this.uri);
 		}
@@ -82,6 +81,5 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 			portlet.saveSetting('title', title); // doesn't actually save on Portlet...
 			this.entries.set(name, portlet);
 		}
-		this.loadedEntries = true;
 	}
 }

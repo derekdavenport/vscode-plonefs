@@ -34,6 +34,5 @@ export default abstract class BaseFile extends PloneObject {
 	protected async _load(): Promise<void> {
 		const buffer = await this._loadExternalBuffer();
 		this.data = this.parseExternalEdit(buffer);
-		this.loaded = true;
 	}
 }

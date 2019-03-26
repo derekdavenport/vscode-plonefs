@@ -92,12 +92,8 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 		return super.loadDetails();
 	}
 
-
 	protected async _load(): Promise<void> {
-		this.loaded = false;
 		this.isRoot ? await this._loadRoot() : await this._loadExternal();
-		this.loading = false;
-		this.loaded = true;
 	}
 
 	private _loadRoot(): boolean {
@@ -111,7 +107,6 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 	}
 
 	protected async _loadEntries(): Promise<void> {
-		this.loadedEntries = false;
 		const classes = {
 			folder: Folder,
 			document: Page,
@@ -125,11 +120,19 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 			document_base_url: 'https://' + this.uri.authority + this.uri.path + '/',
 		};
 		const response = await this.client.post(this.uri.path + '/tinymce-jsonlinkablefolderlisting', { form: true, body, encoding: 'utf8' });
-		this.loadingEntries = false;
 		if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable('could not load folder entries.\n' + response.statusCode + ': ' + response.statusMessage);
 		}
 		const json: Listing = JSON.parse(response.body);
+		// some people are adding sub folders as the root, check if this isn't really the root so we can reenable options
+		if (this._isRoot) {
+			const rootUri = vscode.Uri.parse(json.path[0].url);
+			const isRoot = rootUri.path === this.uri.path;
+			this._isRoot = isRoot;
+			if (this.localCss) {
+				this.localCss.forRoot = isRoot;
+			}
+		}
 		this.entries.clear();
 		//this.settings.set('title', Buffer.from(json.path[json.path.length-1].title));
 		// json.path[0] // TODO: check if really root?
@@ -143,7 +146,6 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 				this.entries.set(item.id, entry);
 			}
 		}
-		this.loadedEntries = true;
 	}
 
 	async paste(): Promise<void> {

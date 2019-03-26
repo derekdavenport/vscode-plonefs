@@ -19,20 +19,16 @@ export default class LocalCss extends BaseFile {
 		super({ ...options, exists: true });
 		this.forRoot = options.forRoot || false;
 	}
-
-	load(): Promise<void> {
-		if (this.loading) {
-			return this.loadingPromise;
-		}
-		this.loading = true;
-		return this.loadingPromise = this.forRoot ? this._loadRoot() : this._load();
-	}
-
+	
 	save(): Promise<void> {
 		return this.forRoot ? this._saveRoot() : super.save();
 	}
 
 	protected async _load(): Promise<void> {
+		return this.forRoot ? this._loadRoot() : this._loadExternal();
+	}
+
+	protected async _loadExternal(): Promise<void> {
 		const externalEditPath = this.path.dir + '/externalEdit_/' + this.name;
 		const response = await this.client(externalEditPath); //.buffer();
 		this.loading = false;
@@ -41,17 +37,20 @@ export default class LocalCss extends BaseFile {
 		}
 		this.parseExternalEdit(response.body);
 		this.data = this.settings.get('localCss') || LocalCss.EMPTY_BUFFER;
-		this.loaded = true;
 	}
 
 	private async _loadRoot(): Promise<void> {
-		const response = await this.client(this.uri.path + '/@@localcss-settings'); //.buffer();
+		const response = await this.client(this.uri.path + '/@@localcss-settings', { throwHttpErrors: false }); //.buffer();
 		this.loading = false;
-		if (response.statusCode !== 200) {
+		if (response.statusCode === 404) {
+			// this isn't actually the root
+			this.forRoot = false;
+			return this._load();
+		}
+		else if (response.statusCode !== 200) {
 			throw vscode.FileSystemError.Unavailable(`${response.statusCode}: ${response.statusMessage}`);
 		}
 		this.data = this._getRootCss(response.body);
-		this.loaded = true;
 	}
 
 	private _getRootCss(buffer: Buffer): Buffer {

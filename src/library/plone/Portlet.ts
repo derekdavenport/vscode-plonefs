@@ -45,7 +45,6 @@ export default class Portlet extends BaseFile {
 			}
 			return inputs;
 		}, this.inputs);
-		this.loaded = true;
 	}
 
 	async save() {

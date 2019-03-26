@@ -101,8 +101,8 @@ export default abstract class PloneObject implements vscode.FileStat {
 		}
 		this.loading = true;
 		return this.loadingPromise = this._load()
-			.then(() => { this.loading = false; this.loaded = true; })
-			.catch(() => { this.loading = false });
+			.then(() => { this.loaded = true; })
+			.finally(() => { this.loading = false });
 	}
 
 	async loadDetails(): Promise<void> {
