@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.3
+
+- Fixed unable to change state to private
+
 ## 0.4.2
 
 - Enabled all folder options when a subfolder is added as the site root
