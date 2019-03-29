@@ -27,7 +27,7 @@ export type State = keyof typeof StateText;
 
 export enum ActionState {
 	show_internally = 'internal',
-	hide = 'internal',
+	hide = 'private',
 	publish_externally = 'external',
 	publish_internally = 'internally_published',
 	publish_restricted = 'internally_restricted',
