@@ -14,7 +14,7 @@
 		"no-var-keyword": true,
 		"prefer-const": true,
 		"prefer-readonly": true,
-		"prefer-conditional-expression": true,
+		"prefer-conditional-expression": true
 	},
-	"defaultSeverity": "warning",
+	"defaultSeverity": "warning"
 }

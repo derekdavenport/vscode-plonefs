@@ -67,7 +67,7 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 
 	relativizePath(path: string) {
 		if (path.indexOf(this.uri.path) !== 0) {
-			throw new Error('path is not relative to this folder')
+			throw new Error('path is not relative to this folder');
 		}
 		return path.substring(this.uri.path.length);
 	}

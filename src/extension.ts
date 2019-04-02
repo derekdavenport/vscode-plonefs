@@ -9,7 +9,6 @@ import { CookieJar } from 'tough-cookie';
 import PloneFS from './PloneFS';
 import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
 
-
 // add missing intermediate cert for stage.louisville.edu
 globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-org.cer');
 
@@ -45,34 +44,34 @@ enum Options {
 	checkIn,
 	openLocalCSS,
 	portlets,
-};
+}
 interface SetSettingAction {
-	type: Options.title | Options.description,
-	entry: Entry,
+	type: Options.title | Options.description;
+	entry: Entry;
 }
 interface SetStateAction {
-	type: Options.setState,
-	entry: WithState,
+	type: Options.setState;
+	entry: WithState;
 }
 interface CheckOutAction {
-	type: Options.checkOut,
-	entry: Page,
+	type: Options.checkOut;
+	entry: Page;
 }
 interface CancelCheckOutAction {
-	type: Options.cancelCheckOut,
-	entry: Page,
+	type: Options.cancelCheckOut;
+	entry: Page;
 }
 interface CheckInAction {
-	type: Options.checkIn,
-	entry: Page,
+	type: Options.checkIn;
+	entry: Page;
 }
 interface OpenLocalCssAction {
-	type: Options.openLocalCSS,
-	entry: WithLocalCss,
+	type: Options.openLocalCSS;
+	entry: WithLocalCss;
 }
 interface PortletsAction {
-	type: Options.portlets,
-	entry: WithPortlets,
+	type: Options.portlets;
+	entry: WithPortlets;
 }
 type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction | PortletsAction;
 
@@ -82,7 +81,7 @@ type CookieJarStore = { [siteName: string]: CookieJar.Serialized };
 const cookieStoreName = 'cookieStore';
 export async function activate(context: vscode.ExtensionContext) {
 	if (vscode.workspace.workspaceFolders !== undefined) {
-		let roots: Roots = {};
+		const roots: Roots = {};
 		for (const folder of vscode.workspace.workspaceFolders) {
 			if (folder.uri.scheme === 'plone') {
 				const siteName = getSiteName(folder.uri);
@@ -91,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				let cookieJar: CookieJar;
 				if (serializedJar) {
 					try {
-						cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName])
+						cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName]);
 					}
 					catch (e) {
 						cookieJar = new CookieJar();
@@ -146,7 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					placeHolder: 'Choose State',
 				});
 				if (stateActionPick) {
-					const stateAction = stateActions[entry.state][stateActionPick]
+					const stateAction = stateActions[entry.state][stateActionPick];
 					try {
 						await entry.changeState(stateAction);
 					}
@@ -238,7 +237,7 @@ export async function activate(context: vscode.ExtensionContext) {
 							stateStatus.hide();
 						}
 					},
-				)
+				),
 			);
 
 			const titleStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1001);
@@ -246,7 +245,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			titleStatus.tooltip = 'Change title';
 
 			function setTitleStatus(entry: Entry) {
-				const label = (entry instanceof Portlet) ? 'Header: ' : 'Title: '
+				const label = (entry instanceof Portlet) ? 'Header: ' : 'Title: ';
 				titleStatus.text = label + entry.title;
 				titleStatus.show();
 			}
@@ -261,7 +260,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
 						setSetting(entry, 'title');
 					},
-				)
+				),
 			);
 
 			// to VS Code Plone Documents and Plone Files are both TextDocuments
@@ -442,7 +441,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				'plonefs.optionsMenu',
 				(uri?: vscode.Uri) => {
 					if (uri) {
-						optionsMenu(uri)
+						optionsMenu(uri);
 					}
 				},
 			));
@@ -450,7 +449,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				'plonefs.debug.expireCookie',
 				() => {
 					//cookieJar
-				}
+				},
 			));
 		}
 	}
