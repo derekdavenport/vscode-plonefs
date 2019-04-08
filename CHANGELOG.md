@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.4
+
+- Fixed unable to create new files
+
 ## 0.4.3
 
 - Fixed unable to change state to private

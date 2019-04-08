@@ -1,7 +1,7 @@
 declare module 'mime/lite' {
 	/**
 	 * Get mime type for the given path or extension
-	 * @param pathOrExtension 
+	 * @param pathOrExtension
 	 * @returns null is returned in cases where an extension is not detected or recognized
 	 */
 	export function getType(pathOrExtension: string): string | null;

@@ -20,7 +20,7 @@ export type Credentials = {
 };
 
 export default class PloneFS implements vscode.FileSystemProvider {
-	private roots: Roots;
+	private readonly roots: Roots;
 
 	constructor(roots: Roots) {
 		this.roots = roots;
@@ -49,7 +49,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		const folder = await this._lookupAsFolder(uri, false);
 		await folder.loadEntries();
 		// return [...entry.entries()].map(([name, child]) => [name, child.type] as [string, vscode.FileType]);
-		let result: [string, vscode.FileType][] = [];
+		const result: [string, vscode.FileType][] = [];
 		for (const [name, child] of folder.entries) {
 			result.push([name, child.type]);
 		}
@@ -89,8 +89,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 		if (!file) {
 			// TODO: check for restricted name: location
-			let basename = path.posix.basename(uri.path);
-			let parent = await this._lookupParentFolder(uri);
+			const basename = path.posix.basename(uri.path);
+			const parent = await this._lookupParentFolder(uri);
 			// files will have an extension
 			const extname = path.posix.extname(uri.path);
 			file = extname ? new File({client: parent.client, uri}) : new Page({client: parent.client, uri});
@@ -103,13 +103,13 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		file.data = content;
 
 		await file.save();
-		events.push({ type: vscode.FileChangeType.Changed, uri })
+		events.push({ type: vscode.FileChangeType.Changed, uri });
 		this._fireSoon(...events);
 	}
 
 	// --- manage files/directories
 
-	async copy(source: vscode.Uri, destination: vscode.Uri, /* options: { overwrite: boolean } */): Promise<void> {
+	async copy(source: vscode.Uri, destination: vscode.Uri /* options: { overwrite: boolean } */): Promise<void> {
 		const entry = await this._lookup(source, false);
 		//let newName = path.posix.basename(destination.path);
 		await entry.copy();
@@ -194,9 +194,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	async delete(uri: vscode.Uri): Promise<void> {
 		throw vscode.FileSystemError.Unavailable('not implemented');
-		let dirname = uri.with({ path: path.posix.dirname(uri.path) });
-		let basename = path.posix.basename(uri.path);
-		let parent = await this._lookupAsFolder(dirname, false);
+		const dirname = uri.with({ path: path.posix.dirname(uri.path) });
+		const basename = path.posix.basename(uri.path);
+		const parent = await this._lookupAsFolder(dirname, false);
 		if (!parent.entries.has(basename)) {
 			throw vscode.FileSystemError.FileNotFound(uri);
 		}
@@ -207,14 +207,14 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	async createDirectory(uri: vscode.Uri): Promise<void> {
-		let basename = path.posix.basename(uri.path);
-		let dirname = uri.with({ path: path.posix.dirname(uri.path), query: '' });
-		let parent = await this._lookupAsFolder(dirname, false);
+		const basename = path.posix.basename(uri.path);
+		const dirname = uri.with({ path: path.posix.dirname(uri.path), query: '' });
+		const parent = await this._lookupAsFolder(dirname, false);
 
 		if (parent.entries.has(basename)) {
 			throw vscode.FileSystemError.FileExists(uri);
 		}
-		let entry = new Folder({ client: parent.client, uri });
+		const entry = new Folder({ client: parent.client, uri });
 		await entry.save();
 		parent.entries.set(entry.name, entry);
 		parent.mtime = Date.now();
@@ -281,7 +281,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		}
 		//let parts = uri.path.split('/').slice(1);
 		const root = this.getRootFolderFor(uri);
-		let parts = root.relativizePath(uri.path).split('/').slice(1);
+		const parts = root.relativizePath(uri.path).split('/').slice(1);
 		let entry: Entry = root;
 		for (const part of parts) {
 			if (!part) {
@@ -336,7 +336,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined>;
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined> {
 		const entry = await this._lookup(uri, silent);
-		if (!(entry instanceof BaseFile)) {
+		if (entry instanceof BaseFolder) {
 			throw vscode.FileSystemError.FileIsADirectory(uri);
 		}
 		return entry;
@@ -349,8 +349,8 @@ export default class PloneFS implements vscode.FileSystemProvider {
 
 	// --- manage file events
 
-	private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-	private _bufferedEvents: vscode.FileChangeEvent[] = [];
+	private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+	private readonly _bufferedEvents: vscode.FileChangeEvent[] = [];
 	private _fireSoonHandle!: NodeJS.Timer;
 
 	readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
