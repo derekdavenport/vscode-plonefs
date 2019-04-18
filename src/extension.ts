@@ -14,18 +14,38 @@ globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-or
 
 // add missing got declarations
 declare module 'got' {
-	type FixedGotStreamFn = (url: GotUrl, options?: GotOptions<string | null> | GotFormOptions<string | null>) => GotEmitter & Duplex;
-	interface GotFn<E extends string | null = null> extends Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', got.GotFn<E>> {
-		(url: GotUrl): GotPromise<E extends string ? string : Buffer>;
+	interface MyGotStreamFn extends GotStreamFn {
+		(url: GotUrl, options?: GotFormOptions<string | null>): GotEmitter & Duplex;
+		(url: GotUrl, options?: GotBodyOptions<string | null>): GotEmitter & Duplex;
+	}
+	interface GotFn<T extends string | null = string> {
+		(url: GotUrl): GotPromise<T extends string ? string : Buffer>;
 		(url: GotUrl, options: GotJSONOptions): GotPromise<any>;
-		(url: GotUrl, options: GotFormOptions<E>): GotPromise<E extends string ? string : Buffer>;
-		(url: GotUrl, options: GotBodyOptions<E>): GotPromise<E extends string ? string : Buffer>;
-		extend(options: GotJSONOptions): GotFn<string>;
-		extend(options: GotFormOptions<E>): GotFn<E>;
-		extend(options: GotBodyOptions<E>): GotFn<E>;
-		stream: FixedGotStreamFn & Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', FixedGotStreamFn>;
+		(url: GotUrl, options: GotFormOptions<T>): GotPromise<T extends string ? string : Buffer>;
+		(url: GotUrl, options: GotBodyOptions<T>): GotPromise<T extends string ? string : Buffer>;
+	}
+	interface GotExtend {
+		(options: GotBodyOptions<null>): MyGotInstance<null>;
+	}
+
+	interface MyGotInstance<T extends string | null> extends GotFn<T>, Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', GotFn<T>> {
+		stream: MyGotStreamFn & Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', MyGotStreamFn>;
 	}
 }
+
+// declare module 'got' {
+// 	type FixedGotStreamFn = (url: GotUrl, options?: GotOptions<string | null> | GotFormOptions<string | null>) => GotEmitter & Duplex;
+// 	interface GotFn<E extends string | null = null> extends Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', got.GotFn<E>> {
+// 		(url: GotUrl): GotPromise<E extends string ? string : Buffer>;
+// 		(url: GotUrl, options: GotJSONOptions): GotPromise<any>;
+// 		(url: GotUrl, options: GotFormOptions<E>): GotPromise<E extends string ? string : Buffer>;
+// 		(url: GotUrl, options: GotBodyOptions<E>): GotPromise<E extends string ? string : Buffer>;
+// 		extend(options: GotJSONOptions): GotFn<string>;
+// 		extend(options: GotFormOptions<E>): GotFn<E>;
+// 		extend(options: GotBodyOptions<E>): GotFn<E>;
+// 		stream: FixedGotStreamFn & Record<'get' | 'post' | 'put' | 'patch' | 'head' | 'delete', FixedGotStreamFn>;
+// 	}
+// }
 
 enum StateColor {
 	internal = 'white',
@@ -490,7 +510,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	}));
 }
 
-async function login(client: got.GotFn, uri: vscode.Uri): Promise<boolean | undefined> {
+async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<boolean | undefined> {
 	const siteName = getSiteName(uri);
 	let username: string | undefined = '',
 		password: string | undefined = '';

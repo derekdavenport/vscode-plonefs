@@ -6,7 +6,7 @@ import { parse, HTMLElement } from "node-html-parser";
 import * as got from 'got';
 
 interface PortletManagerOptions<S extends PortletSideType> {
-	client: got.GotFn;
+	client: got.MyGotInstance<null>;
 	parentUri: vscode.Uri;
 	side: S;
 }
@@ -29,7 +29,7 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 
 	async add(header: string): Promise<void> {
 		const _authenticator = await this.getAuthenticator();
-		
+
 		const savePath = this.uri.path + '/+/plone.portlet.static.Static';
 		const body = new Form();
 		body.append('form.header', header);
@@ -45,7 +45,7 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 
 	private async getAuthenticator(): Promise<string> {
 		const body = {
-			':action': '/' + this.path.base + '/+/plone.portlet.static.Static'
+			':action': '/' + this.path.base + '/+/plone.portlet.static.Static',
 		};
 		const response = await this.client.post(this.path.dir, { form: true, body, encoding: 'utf8' });
 		if (response.statusCode !== 200) {

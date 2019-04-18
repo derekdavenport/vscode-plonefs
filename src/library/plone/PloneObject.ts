@@ -7,7 +7,7 @@ import { linefeed, Mode, endOfLineSequences, valueStartOffsets, colon, singleLin
 import { State, StateAction, ActionState } from '.';
 
 export interface PloneObjectOptions {
-	client: got.GotFn;
+	client: got.MyGotInstance<null>;
 	uri: vscode.Uri;
 	exists?: boolean;
 }
@@ -18,7 +18,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 	static readonly EMPTY_BUFFER = Buffer.from('');
 	static readonly LINEFEED_BUFFER = Buffer.from('\n');
 	static readonly TRUE_BUFFER = Buffer.from('True');
-	static readonly SAVED_BUFFER = Buffer.from('saved');;
+	static readonly SAVED_BUFFER = Buffer.from('saved');
 
 	type: vscode.FileType;
 	ctime: number;
@@ -65,7 +65,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 
 	protected settings: Map<string, Buffer>;
 
-	client: got.GotFn;
+	client: PloneObjectOptions["client"];
 
 	constructor({ client, uri, exists }: PloneObjectOptions) {
 		this.client = client;
@@ -102,7 +102,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this.loading = true;
 		return this.loadingPromise = this._load()
 			.then(() => { this.loaded = true; })
-			.finally(() => { this.loading = false });
+			.finally(() => { this.loading = false; });
 	}
 
 	async loadDetails(): Promise<void> {
@@ -223,11 +223,11 @@ export default abstract class PloneObject implements vscode.FileStat {
 			}
 			lineStart = nextLineStart;
 			nextLineStart = lineEnd + eol.length;
-			let colonIndex = buffer.indexOf(colon, lineStart);
+			const colonIndex = buffer.indexOf(colon, lineStart);
 			key = buffer.slice(lineStart, colonIndex).toString();
 			value = buffer.slice(colonIndex + valueStartOffset, lineEnd);
 			// these keys don't insert blank lines between lines of multiline values
-			const nextLineStartOffset = singleLineKeys.includes(key) ? indent.length : blankLine.length
+			const nextLineStartOffset = singleLineKeys.includes(key) ? indent.length : blankLine.length;
 			// check for multiline value
 			while (buffer.indexOf(indent, nextLineStart) === nextLineStart) {
 				lineStart = nextLineStart + nextLineStartOffset;
@@ -260,7 +260,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		// in case of rename
 		// TODO: make newName a param or something?
 		this.uri = this.uri.with({ path: this.path.dir + '/' + this.name });
-		this.exists = true
+		this.exists = true;
 	}
 
 	private async _cutCopy(action: 'cut' | 'copy'): Promise<void> {
