@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.5
+
+- Fixed empty portlet options changing to ""
+
 ## 0.4.4
 
 - Fixed unable to create new files
