@@ -12,12 +12,11 @@ import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, is
 import cert from '../ssl/globalsign-org.cer';
 
 // add missing intermediate cert for stage.louisville.edu
-//globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-org.cer');
 let ca = globalAgent.options.ca || [];
 if (!(ca instanceof Array)) {
 	ca = [ca];
 }
-ca.push(readFileSync(cert));
+ca.push(readFileSync(__dirname + '/' + cert));
 globalAgent.options.ca = ca;
 
 // add missing got declarations

@@ -7,7 +7,7 @@
 			"es2017"
 		],
 		"sourceMap": true,
-		"rootDir": ".",
+		"rootDir": "src",
 		"strict": true,
 		"noUnusedLocals": true,
 		"noImplicitAny": true,
@@ -17,7 +17,13 @@
 		"plugins": [
 			{ "name": "typescript-tslint-plugin" }
 		],
+		"moduleResolution": "node",
 	},
+	"include": [
+		"src/**/*.ts",
+		"./node_modules/vscode/vscode.d.ts",
+		"./node_modules/vscode/lib/*",
+	],
 	"exclude": [
 		"node_modules",
 		".vscode-test"

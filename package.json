@@ -20,7 +20,7 @@
 		"onFileSystem:plone",
 		"onCommand:plonefs.workspace"
 	],
-	"main": "./out/src/extension",
+	"main": "./out/extension",
 	"contributes": {
 		"commands": [
 			{
