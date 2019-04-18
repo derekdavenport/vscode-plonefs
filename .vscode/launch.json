@@ -26,7 +26,8 @@
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
-			"preLaunchTask": "npm: watch"
+			"sourceMaps": true,
+			"preLaunchTask": "npm: webpack"
 		},
 		{
 			"name": "Extension Tests",

@@ -26,3 +26,8 @@ declare module 'ssl-root-cas' {
 	}
 	export function create(): RootCas;
 }
+
+declare module "*.cer" {
+	const path: string;
+	export default path;
+}

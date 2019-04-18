@@ -3,14 +3,22 @@ import * as vscode from 'vscode';
 import { IncomingMessage } from 'http';
 import { globalAgent } from 'https';
 import { Duplex } from 'stream';
-import * as src from 'ssl-root-cas';
+import { readFileSync } from 'fs';
+//import * as src from 'ssl-root-cas';
 import * as got from 'got';
 import { CookieJar } from 'tough-cookie';
 import PloneFS from './PloneFS';
 import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
+import cert from '../ssl/globalsign-org.cer';
 
 // add missing intermediate cert for stage.louisville.edu
-globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-org.cer');
+//globalAgent.options.ca = src.create().addFile(__dirname + '/../ssl/globalsign-org.cer');
+let ca = globalAgent.options.ca || [];
+if (!(ca instanceof Array)) {
+	ca = [ca];
+}
+ca.push(readFileSync(cert));
+globalAgent.options.ca = ca;
 
 // add missing got declarations
 declare module 'got' {
