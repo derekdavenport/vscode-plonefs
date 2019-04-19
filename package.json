@@ -3,7 +3,7 @@
 	"displayName": "Plone File System",
 	"description": "Open Plone sites in Visual Studio Code",
 	"icon": "images/PloneFS.png",
-	"version": "0.4.5",
+	"version": "0.4.6",
 	"publisher": "derekdavenport",
 	"license": "MIT",
 	"repository": {
