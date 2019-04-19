@@ -37,11 +37,6 @@
 				"command": "plonefs.changeState",
 				"title": "Change State",
 				"category": "PloneFS"
-			},
-			{
-				"command": "plonefs.debug.expireCookie",
-				"title": "Expire Cookie",
-				"category": "PloneFS"
 			}
 		],
 		"menus": {
@@ -60,10 +55,6 @@
 				{
 					"command": "plonefs.changeState",
 					"when": "false"
-				},
-				{
-					"command": "plonefs.debug.expireCookie",
-					"when": "debug == true"
 				}
 			]
 		}

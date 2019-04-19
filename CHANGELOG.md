@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.6
+
+- Removed unused files
+
 ## 0.4.5
 
 - Fixed empty portlet options changing to ""
