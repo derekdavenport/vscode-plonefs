@@ -1,5 +1,9 @@
 # Change Log
 
+## 0.4.8
+
+- Version bump to republish
+
 ## 0.4.7
 
 - Removed stage.louisville.edu certificate fix
