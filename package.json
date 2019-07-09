@@ -75,21 +75,20 @@
 	"devDependencies": {
 		"@types/form-data": "^2.2.1",
 		"@types/got": "^9.4.3",
-		"@types/jest": "^24.0.11",
-		"@types/node": "^10.14.4",
+		"@types/node": "^10.11.0",
+		"@types/vscode": "^1.29.0",
 		"copyfiles": "^2.1.0",
 		"file-loader": "^3.0.1",
-		"ts-loader": "^5.3.3",
+		"ts-loader": "^6.0.4",
 		"tslint": "^5.16.0",
-		"typescript": "^3.4.3",
-		"vscode": "^1.1.33",
+		"typescript": "^3.5.3",
 		"webpack": "^4.30.0",
 		"webpack-cli": "^3.3.0"
 	},
 	"dependencies": {
 		"form-data": "^2.3.3",
 		"got": "^9.6.0",
-		"mime": "^2.4.2",
+		"mime": "^2.4.4",
 		"node-html-parser": "^1.1.15",
 		"tough-cookie": "^3.0.1"
 	}

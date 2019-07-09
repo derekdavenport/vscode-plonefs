@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.4.7
+
+- Removed stage.louisville.edu certificate fix
+- Updated dependencies
+
 ## 0.4.6
 
 - Removed unused files
