@@ -22,7 +22,7 @@ export enum StateText {
 	internally_restricted = 'Internally restricted',
 	private = 'Private',
 	pending = 'Pending review',
-};
+}
 export type State = keyof typeof StateText;
 
 export enum ActionState {
@@ -33,7 +33,7 @@ export enum ActionState {
 	publish_restricted = 'internally_restricted',
 	submit = 'pending',
 	retract = 'internal',
-};
+}
 export type StateAction = keyof typeof ActionState;
 
 export const stateActions: {
@@ -119,7 +119,7 @@ export enum PortletManagerSides {
 
 export type PortletManagers = {
 	[S in PortletSideType]: PortletManager<S>;
-}
+};
 
 export interface WithPortlets extends PloneObject {
 	portletManagers: PortletManagers;
@@ -128,4 +128,3 @@ export interface WithPortlets extends PloneObject {
 export function isWithPortlets(ploneObject: PloneObject): ploneObject is WithPortlets {
 	return typeof (ploneObject as WithPortlets).portletManagers === 'object'; // && ploneObject.portlets.each()
 }
-

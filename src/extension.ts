@@ -74,6 +74,7 @@ enum Options {
 	checkIn,
 	openLocalCSS,
 	portlets,
+	showUID,
 }
 interface SetSettingAction {
 	type: Options.title | Options.description;
@@ -103,7 +104,11 @@ interface PortletsAction {
 	type: Options.portlets;
 	entry: WithPortlets;
 }
-type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction | PortletsAction;
+interface ShowUIDAction {
+	type: Options.showUID;
+	entry: Entry;
+}
+type OptionsMenuAction = SetSettingAction | SetStateAction | CheckOutAction | CancelCheckOutAction | CheckInAction | OpenLocalCssAction | PortletsAction | ShowUIDAction;
 
 export type Roots = { [siteName: string]: Folder; };
 type CookieJarStore = { [siteName: string]: CookieJar.Serialized };
@@ -246,6 +251,27 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
+			async function showUID(entry: Entry) {
+				// right now uid should always have a value
+				// because this function is only called by the options menu
+				// which should always load details first
+				if (!entry.uid) {
+					await entry.loadDetails();
+				}
+				if (entry.uid) {
+					const options = <const>['Copy'];
+					const option = await vscode.window.showInformationMessage(entry.uid, ...options) as typeof options[number] | undefined;
+					switch (option) {
+						case 'Copy':
+							vscode.env.clipboard.writeText(entry.uid);
+							break;
+					}
+				}
+				else {
+					vscode.window.showErrorMessage('could not load UID');
+				}
+			}
+
 			function setStateStatus(entry: WithState) {
 				stateStatus.text = 'State: ' + StateText[entry.state];
 				stateStatus.color = StateColor[entry.state];
@@ -362,7 +388,8 @@ export async function activate(context: vscode.ExtensionContext) {
 				// map readable text to pick option
 				const optionsToAction: { [option: string]: OptionsMenuAction } = {};
 				// disable title/description for root until supported
-				if (!(entry instanceof Folder && entry.isRoot)) {
+				const isRootFolder = entry instanceof Folder && entry.isRoot;
+				if (!isRootFolder) {
 					await entry.loadDetails();
 					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
 					optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
@@ -388,6 +415,9 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 				if (isWithPortlets(entry)) {
 					optionsToAction['Portlets'] = { type: Options.portlets, entry };
+				}
+				if (!isRootFolder) {
+					optionsToAction['Get UID'] = { type: Options.showUID, entry };
 				}
 				const option = await vscode.window.showQuickPick(Object.keys(optionsToAction), {
 					placeHolder: 'Plone Options',
@@ -461,6 +491,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					case Options.portlets:
 						showPortletSidePicker(action.entry);
 						break;
+					case Options.showUID:
+						showUID(action.entry);
+						break;
 					default:
 						const never: never = action;
 						throw new Error('unexpected Plone setting: ' + never);
@@ -505,9 +538,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (uri) {
 				vscode.workspace.updateWorkspaceFolders(
 					0, 0, {
-						name: getSiteName(uri),
-						uri,
-					},
+					name: getSiteName(uri),
+					uri,
+				},
 				);
 			}
 		}

@@ -46,12 +46,12 @@ export default abstract class PloneObject implements vscode.FileStat {
 		this._name = name;
 	}
 	protected _title: string;
-
 	get title() {
 		return this._title;
 	}
 	description: string;
 	excludeFromNav: boolean;
+	uid: string | undefined;
 
 	loading: boolean;
 	loaded: boolean;
@@ -109,6 +109,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		type Details = {
 			title: string;
 			description: string;
+			uid_relative_url: string; //resolveuid/[uid]
 		};
 		const response = await this.client(this.uri.path + '/tinymce-jsondetails', { json: true });//.json();
 		if (response.statusCode !== 200) {
@@ -117,6 +118,7 @@ export default abstract class PloneObject implements vscode.FileStat {
 		const details: Details = response.body;
 		this._title = details.title;
 		this.description = details.description;
+		this.uid = details.uid_relative_url.substring(details.uid_relative_url.lastIndexOf('/') + 1);
 	}
 
 	async loadExcludeFromNav() {
