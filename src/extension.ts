@@ -4,7 +4,7 @@ import { IncomingMessage } from 'http';
 import { Duplex } from 'stream';
 //import * as src from 'ssl-root-cas';
 import * as got from 'got';
-import { CookieJar } from 'tough-cookie';
+import { CookieJar, Cookie } from 'tough-cookie';
 import PloneFS from './PloneFS';
 import { Page, File, LocalCss, Folder, Entry, Document, Portlet, isWithState, isWithLocalCss, StateText, WithPortlets, WithState, WithLocalCss, isWithPortlets, PortletSides, PortletManager, stateActions } from './library/plone';
 
@@ -135,10 +135,17 @@ export async function activate(context: vscode.ExtensionContext) {
 					cookieJar = new CookieJar();
 				}
 
+				// option not to use https
+				const protocols = ['http', 'https'] as const;
+				const protocol = await vscode.window.showQuickPick([...protocols], {
+					placeHolder: 'protocol',
+					ignoreFocusOut: true,
+				}) as typeof protocols[number] | undefined;
+
 				const gotOptions: got.GotBodyOptions<null> = {
 					encoding: null, // default to buffer
 					followRedirect: false,
-					baseUrl: 'https://' + folder.uri.authority,
+					baseUrl: (protocol ?? 'https') + '://' + folder.uri.authority,
 					cookieJar,
 					hooks: {
 						afterResponse: [
@@ -147,7 +154,33 @@ export async function activate(context: vscode.ExtensionContext) {
 									response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>" ||
 									response.headers['bobo-exception-type'] === "<class 'AccessControl.unauthorized.Unauthorized'>"
 								) {
-									if (await login(client, folder.uri)) {
+									let loggedin = false;
+									try {
+										loggedin = await login(client, folder.uri);
+									}
+									catch (e) {
+										//ssl error
+										if (e.code === "EPROTO") {
+											const cookieValue = await vscode.window.showInputBox({
+												prompt: 'Cookie for ' + siteName,
+												ignoreFocusOut: true,
+											});
+											// cancelled
+											if (cookieValue === undefined) {
+												return response;
+											}
+											const cookie = new Cookie({
+												key: '__ac',
+												value: cookieValue,
+												domain: folder.uri.authority,
+												path: '/',
+											});
+											cookieJar.setCookieSync(cookie, gotOptions.baseUrl!);
+										}
+										// how to check if the cookie is good?
+										loggedin = true;
+									}
+									if (loggedin) {
 										context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
 										return retry({});
 									}
@@ -160,7 +193,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				const client = got.extend(gotOptions);
 
 				const test = await client(folder.uri.path + '/edit');
-				if (test.statusCode === 200) {
+				if (test?.statusCode === 200) {
 					const uri = folder.uri.with({ scheme: 'plone' });
 					roots[siteName] = new Folder({ client, uri, exists: true, isRoot: true });
 				}
@@ -532,6 +565,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (uriValue === undefined) {
 				return;
 			}
+
 			// remove protocol and/or a final slash
 			uriValue = uriValue.replace(/^https?:\/\/|\/+$/g, '');
 			uri = vscode.Uri.parse('plone://' + uriValue);
@@ -547,7 +581,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	}));
 }
 
-async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<boolean | undefined> {
+async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<boolean> {
 	const siteName = getSiteName(uri);
 	let username: string | undefined = '',
 		password: string | undefined = '';
@@ -559,7 +593,7 @@ async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<
 		});
 		// cancelled
 		if (username === undefined) {
-			return;
+			return false;
 		}
 		password = await vscode.window.showInputBox({
 			prompt: 'Password for ' + siteName,
@@ -569,7 +603,7 @@ async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<
 		});
 		// cancelled
 		if (password === undefined) {
-			return;
+			return false;
 		}
 
 		const body = {
@@ -578,7 +612,7 @@ async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<
 			__ac_password: password,
 			'form.submitted': 1,
 		};
-		const stream = client.stream.post(uri.path + '/login_form', { form: true, body, throwHttpErrors: false });
+		const stream = client.stream.post('https://' + uri.authority + uri.path + '/login_form', { form: true, body, throwHttpErrors: false });
 		const response = await getResponse(stream);
 		return response.statusCode === 302;
 	}
