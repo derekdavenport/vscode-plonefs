@@ -135,17 +135,10 @@ export async function activate(context: vscode.ExtensionContext) {
 					cookieJar = new CookieJar();
 				}
 
-				// option not to use https
-				const protocols = ['http', 'https'] as const;
-				const protocol = await vscode.window.showQuickPick([...protocols], {
-					placeHolder: 'protocol',
-					ignoreFocusOut: true,
-				}) as typeof protocols[number] | undefined;
-
 				const gotOptions: got.GotBodyOptions<null> = {
 					encoding: null, // default to buffer
 					followRedirect: false,
-					baseUrl: (protocol ?? 'https') + '://' + folder.uri.authority,
+					baseUrl: 'https://' + folder.uri.authority,
 					cookieJar,
 					hooks: {
 						afterResponse: [
@@ -161,13 +154,17 @@ export async function activate(context: vscode.ExtensionContext) {
 									catch (e) {
 										//ssl error
 										if (e.code === "EPROTO") {
-											const cookieValue = await vscode.window.showInputBox({
+											let cookieValue = await vscode.window.showInputBox({
 												prompt: 'Cookie for ' + siteName,
 												ignoreFocusOut: true,
 											});
 											// cancelled
 											if (cookieValue === undefined) {
 												return response;
+											}
+											// remove wrapping quotes
+											else if (cookieValue[0] === '"') {
+												cookieValue = cookieValue.slice(1, -1);
 											}
 											const cookie = new Cookie({
 												key: '__ac',
@@ -612,6 +609,7 @@ async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<
 			__ac_password: password,
 			'form.submitted': 1,
 		};
+		// force https because of TLS 1.0 workaround
 		const stream = client.stream.post('https://' + uri.authority + uri.path + '/login_form', { form: true, body, throwHttpErrors: false });
 		const response = await getResponse(stream);
 		return response.statusCode === 302;
