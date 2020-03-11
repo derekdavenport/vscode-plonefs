@@ -114,438 +114,400 @@ export type Roots = { [siteName: string]: Folder; };
 type CookieJarStore = { [siteName: string]: CookieJar.Serialized };
 
 const cookieStoreName = 'cookieStore';
+
+const ploneFS = new PloneFS();
+
+// activate is called when the extension first loads, but also when the first workspace folder is updated
+// so don't do anything until at least one Plone folder is added
 export async function activate(context: vscode.ExtensionContext) {
-	if (vscode.workspace.workspaceFolders !== undefined) {
-		const roots: Roots = {};
-		for (const folder of vscode.workspace.workspaceFolders) {
-			if (folder.uri.scheme === 'plone') {
-				const siteName = getSiteName(folder.uri);
-				const cookieJarStore = context.globalState.get<CookieJarStore>(cookieStoreName, {});
-				const serializedJar = cookieJarStore[siteName];
-				let cookieJar: CookieJar;
-				if (serializedJar) {
-					try {
-						cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName]);
-					}
-					catch (e) {
-						cookieJar = new CookieJar();
-					}
+	function addFolders(folders: readonly vscode.WorkspaceFolder[]) {
+		const cookieJarStore = context.globalState.get<CookieJarStore>(cookieStoreName, {});
+		for (const folder of folders) {
+			const siteName = getSiteName(folder.uri);
+			const serializedJar = cookieJarStore[siteName];
+			let cookieJar: CookieJar;
+			if (serializedJar) {
+				try {
+					cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName]);
 				}
-				else {
+				catch (e) {
 					cookieJar = new CookieJar();
 				}
-
-				const gotOptions: got.GotBodyOptions<null> = {
-					encoding: null, // default to buffer
-					followRedirect: false,
-					baseUrl: 'https://' + folder.uri.authority,
-					cookieJar,
-					hooks: {
-						afterResponse: [
-							async (response, retry) => {
-								if ( // Unauthorized
-									response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>" ||
-									response.headers['bobo-exception-type'] === "<class 'AccessControl.unauthorized.Unauthorized'>"
-								) {
-									let loggedin = false;
-									try {
-										loggedin = await login(client, folder.uri);
-									}
-									catch (e) {
-										//ssl error
-										if (e.code === "EPROTO") {
-											let cookieValue = await vscode.window.showInputBox({
-												prompt: 'Cookie for ' + siteName,
-												ignoreFocusOut: true,
-											});
-											// cancelled
-											if (cookieValue === undefined) {
-												return response;
-											}
-											// remove wrapping quotes
-											else if (cookieValue[0] === '"') {
-												cookieValue = cookieValue.slice(1, -1);
-											}
-											const cookie = new Cookie({
-												key: '__ac',
-												value: cookieValue,
-												domain: folder.uri.authority,
-												path: '/',
-											});
-											cookieJar.setCookieSync(cookie, gotOptions.baseUrl!);
-										}
-										// how to check if the cookie is good?
-										loggedin = true;
-									}
-									if (loggedin) {
-										context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
-										return retry({});
-									}
+			}
+			else {
+				cookieJar = new CookieJar();
+			}
+			const gotOptions: got.GotBodyOptions<null> = {
+				encoding: null, // default to buffer
+				followRedirect: false,
+				baseUrl: 'https://' + folder.uri.authority,
+				cookieJar,
+				hooks: {
+					afterResponse: [
+						async (response, retry) => {
+							if ( // Unauthorized
+								response.headers['bobo-exception-type'] === "<class 'zExceptions.unauthorized.Unauthorized'>" ||
+								response.headers['bobo-exception-type'] === "<class 'AccessControl.unauthorized.Unauthorized'>"
+							) {
+								const loggedin = await login(folder.uri, cookieJar);
+								if (!loggedin) {
+									removeWorkspaceFolder(folder.uri);
 								}
-								return response;
-							},
-						],
-					},
-				};
-				const client = got.extend(gotOptions);
+								else {
+									context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
+									return retry({});
+								}
+							}
+							return response;
+						},
+					],
+				},
+			};
+			const client = got.extend(gotOptions);
+			const uri = folder.uri.with({ scheme: 'plone' });
+			ploneFS.addRoot(siteName, new Folder({ client, uri, exists: true, isRoot: true }));
+		}
+	}
 
-				const test = await client(folder.uri.path + '/edit');
-				if (test?.statusCode === 200) {
-					const uri = folder.uri.with({ scheme: 'plone' });
-					roots[siteName] = new Folder({ client, uri, exists: true, isRoot: true });
+	const ploneWorkspaceFolders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'plone');
+	if (ploneWorkspaceFolders !== undefined) {
+		context.subscriptions.push(vscode.workspace.registerFileSystemProvider('plone', ploneFS, { isCaseSensitive: false }));
+		addFolders(ploneWorkspaceFolders);
+		context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(e => {
+			addFolders(e.added);
+		}));
+
+		const stateStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+		stateStatus.command = 'plonefs.changeState';
+		stateStatus.tooltip = 'Change state';
+
+		async function showChangeState(entry: WithState): Promise<void> {
+			// externally published, internally published, internally restricted can only retract
+			const stateActionPick = await vscode.window.showQuickPick(Object.keys(stateActions[entry.state]), {
+				placeHolder: 'Choose State',
+			});
+			if (stateActionPick) {
+				const stateAction = stateActions[entry.state][stateActionPick];
+				try {
+					await entry.changeState(stateAction);
+				}
+				catch (e) {
+					vscode.window.showErrorMessage(`Unable to "${stateActionPick}"\n${e.message}`);
+					return;
+				}
+				vscode.window.showInformationMessage(`Set state of ${entry.name}: ${StateText[entry.state]}`);
+				// make sure this is still the active document
+				if (vscode.window.activeTextEditor) {
+					const activeUri = vscode.window.activeTextEditor.document.uri;
+					const entryUri = entry.uri;
+					if (
+						activeUri.scheme === entryUri.scheme &&
+						activeUri.authority === entryUri.authority &&
+						activeUri.path === entryUri.path &&
+						activeUri.query === entryUri.query
+					) {
+						setStateStatus(entry);
+					}
 				}
 			}
 		}
-		if (Object.keys(roots).length) {
-			const ploneFS = new PloneFS(roots);
-			context.subscriptions.push(vscode.workspace.registerFileSystemProvider('plone', ploneFS, { isCaseSensitive: false }));
 
-			const stateStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-			stateStatus.command = 'plonefs.changeState';
-			stateStatus.tooltip = 'Change state';
-
-			async function showChangeState(entry: WithState): Promise<void> {
-				// externally published, internally published, internally restricted can only retract
-				const stateActionPick = await vscode.window.showQuickPick(Object.keys(stateActions[entry.state]), {
-					placeHolder: 'Choose State',
-				});
-				if (stateActionPick) {
-					const stateAction = stateActions[entry.state][stateActionPick];
-					try {
-						await entry.changeState(stateAction);
-					}
-					catch (e) {
-						vscode.window.showErrorMessage(`Unable to "${stateActionPick}"\n${e.message}`);
-						return;
-					}
-					vscode.window.showInformationMessage(`Set state of ${entry.name}: ${StateText[entry.state]}`);
-					// make sure this is still the active document
-					if (vscode.window.activeTextEditor) {
-						const activeUri = vscode.window.activeTextEditor.document.uri;
-						const entryUri = entry.uri;
-						if (
-							activeUri.scheme === entryUri.scheme &&
-							activeUri.authority === entryUri.authority &&
-							activeUri.path === entryUri.path &&
-							activeUri.query === entryUri.query
-						) {
-							setStateStatus(entry);
-						}
-					}
-				}
+		async function showPortletSidePicker(entry: WithPortlets): Promise<void> {
+			const side = await vscode.window.showQuickPick(Object.keys(PortletSides), {
+				placeHolder: 'Pick Portlet Side',
+			}) as keyof typeof PortletSides | undefined;
+			if (!side) {
+				return;
 			}
+			showPortlets(entry.portletManagers[side]);
+		}
 
-			async function showPortletSidePicker(entry: WithPortlets): Promise<void> {
-				const side = await vscode.window.showQuickPick(Object.keys(PortletSides), {
-					placeHolder: 'Pick Portlet Side',
-				}) as keyof typeof PortletSides | undefined;
-				if (!side) {
+		async function showPortlets(portletManager: PortletManager): Promise<void> {
+			await portletManager.loadEntries();
+			const newPortletOption = '$(file-add) new';
+			const pickMap = [...portletManager.entries.entries()].reduce((pickMap, [name, portlet]) => {
+				pickMap[`${portlet.title} (${name})`] = name;
+				return pickMap;
+			}, {} as Record<string, string>);
+			const pick = await vscode.window.showQuickPick([...Object.keys(pickMap), newPortletOption], {
+				placeHolder: 'Pick Portlet',
+			});
+			if (!pick) {
+				return;
+			}
+			let name: string | undefined;
+			if (pick === newPortletOption) {
+				const header = await vscode.window.showInputBox({ prompt: 'Portlet header' });
+				if (header === undefined) {
 					return;
 				}
-				showPortlets(entry.portletManagers[side]);
+				await portletManager.add(header);
+				return showPortlets(portletManager);
 			}
-
-			async function showPortlets(portletManager: PortletManager): Promise<void> {
-				await portletManager.loadEntries();
-				const newPortletOption = '$(file-add) new';
-				const pickMap = [...portletManager.entries.entries()].reduce((pickMap, [name, portlet]) => {
-					pickMap[`${portlet.title} (${name})`] = name;
-					return pickMap;
-				}, {} as Record<string, string>);
-				const pick = await vscode.window.showQuickPick([...Object.keys(pickMap), newPortletOption], {
-					placeHolder: 'Pick Portlet',
-				});
-				if (!pick) {
-					return;
+			else {
+				name = pickMap[pick];
+			}
+			const portlet = portletManager.entries.get(name);
+			if (portlet) {
+				try {
+					await vscode.window.showTextDocument(portlet.uri);
 				}
-				let name: string | undefined;
-				if (pick === newPortletOption) {
-					const header = await vscode.window.showInputBox({ prompt: 'Portlet header' });
-					if (header === undefined) {
-						return;
-					}
-					await portletManager.add(header);
-					return showPortlets(portletManager);
-				}
-				else {
-					name = pickMap[pick];
-				}
-				const portlet = portletManager.entries.get(name);
-				if (portlet) {
-					try {
-						await vscode.window.showTextDocument(portlet.uri);
-					}
-					catch (error) {
-						vscode.window.showErrorMessage(error.message);
-					}
+				catch (error) {
+					vscode.window.showErrorMessage(error.message);
 				}
 			}
+		}
 
-			async function showUID(entry: Entry) {
-				// right now uid should always have a value
-				// because this function is only called by the options menu
-				// which should always load details first
-				if (!entry.uid) {
-					await entry.loadDetails();
-				}
-				if (entry.uid) {
-					const options = <const>['Copy'];
-					const option = await vscode.window.showInformationMessage(entry.uid, ...options) as typeof options[number] | undefined;
-					switch (option) {
-						case 'Copy':
-							vscode.env.clipboard.writeText(entry.uid);
-							break;
-					}
-				}
-				else {
-					vscode.window.showErrorMessage('could not load UID');
+		async function showUID(entry: Entry) {
+			// right now uid should always have a value
+			// because this function is only called by the options menu
+			// which should always load details first
+			if (!entry.uid) {
+				await entry.loadDetails();
+			}
+			if (entry.uid) {
+				const options = <const>['Copy'];
+				const option = await vscode.window.showInformationMessage(entry.uid, ...options) as typeof options[number] | undefined;
+				switch (option) {
+					case 'Copy':
+						vscode.env.clipboard.writeText(entry.uid);
+						break;
 				}
 			}
-
-			function setStateStatus(entry: WithState) {
-				stateStatus.text = 'State: ' + StateText[entry.state];
-				stateStatus.color = StateColor[entry.state];
-				stateStatus.show();
+			else {
+				vscode.window.showErrorMessage('could not load UID');
 			}
+		}
 
-			context.subscriptions.push(
-				vscode.commands.registerCommand(
-					'plonefs.changeState',
-					async () => {
-						if (!vscode.window.activeTextEditor) {
-							return stateStatus.hide();
-						}
-						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
-						if (isWithState(entry)) {
-							showChangeState(entry);
-						}
-						else {
-							stateStatus.hide();
-						}
-					},
-				),
-			);
+		function setStateStatus(entry: WithState) {
+			stateStatus.text = 'State: ' + StateText[entry.state];
+			stateStatus.color = StateColor[entry.state];
+			stateStatus.show();
+		}
 
-			const titleStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1001);
-			titleStatus.command = 'plonefs.changeTitle';
-			titleStatus.tooltip = 'Change title';
-
-			function setTitleStatus(entry: Entry) {
-				const label = (entry instanceof Portlet) ? 'Header: ' : 'Title: ';
-				titleStatus.text = label + entry.title;
-				titleStatus.show();
-			}
-
-			context.subscriptions.push(
-				vscode.commands.registerCommand(
-					'plonefs.changeTitle',
-					async () => {
-						if (!vscode.window.activeTextEditor) {
-							return titleStatus.hide();
-						}
-						const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
-						setSetting(entry, 'title');
-					},
-				),
-			);
-
-			// to VS Code Plone Documents and Plone Files are both TextDocuments
-			// so set Plone Documents to be HTML and Files to be whatever we determined them to be
-			// (unless VS Code already figured it out)
-			context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(async doc => {
-				const entry: Entry = await ploneFS.stat(doc.uri);
-				if (doc.languageId === 'plaintext') {
-					if (entry instanceof Document || entry instanceof Portlet) {
-						vscode.languages.setTextDocumentLanguage(doc, 'html');
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				'plonefs.changeState',
+				async () => {
+					if (!vscode.window.activeTextEditor) {
+						return stateStatus.hide();
 					}
-					else if (entry instanceof LocalCss) {
-						vscode.languages.setTextDocumentLanguage(doc, 'css');
-					}
-					else if (entry instanceof File && entry.language && entry.language !== 'plaintext') {
-						vscode.languages.setTextDocumentLanguage(doc, entry.language);
-					}
-				}
-			}));
-
-			context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(async (textEditor?: vscode.TextEditor) => {
-				if (textEditor) {
-					const entry: Entry = await ploneFS.stat(textEditor.document.uri);
+					const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
 					if (isWithState(entry)) {
-						setStateStatus(entry);
+						showChangeState(entry);
 					}
 					else {
 						stateStatus.hide();
 					}
-					if (!(entry instanceof LocalCss)) {
-						setTitleStatus(entry);
+				},
+			),
+		);
+
+		const titleStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1001);
+		titleStatus.command = 'plonefs.changeTitle';
+		titleStatus.tooltip = 'Change title';
+
+		function setTitleStatus(entry: Entry) {
+			const label = (entry instanceof Portlet) ? 'Header: ' : 'Title: ';
+			titleStatus.text = label + entry.title;
+			titleStatus.show();
+		}
+
+		context.subscriptions.push(
+			vscode.commands.registerCommand(
+				'plonefs.changeTitle',
+				async () => {
+					if (!vscode.window.activeTextEditor) {
+						return titleStatus.hide();
 					}
-					else {
-						titleStatus.hide();
-					}
+					const entry: Entry = await ploneFS.stat(vscode.window.activeTextEditor.document.uri);
+					setSetting(entry, 'title');
+				},
+			),
+		);
+
+		context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(textDocumentOpened));
+		context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(async (textEditor?: vscode.TextEditor) => {
+			if (textEditor) {
+				const entry: Entry = await ploneFS.stat(textEditor.document.uri);
+				if (isWithState(entry)) {
+					setStateStatus(entry);
 				}
 				else {
 					stateStatus.hide();
+				}
+				if (!(entry instanceof LocalCss)) {
+					setTitleStatus(entry);
+				}
+				else {
 					titleStatus.hide();
 				}
-			}));
+			}
+			else {
+				stateStatus.hide();
+				titleStatus.hide();
+			}
+		}));
 
-			async function setSetting(entry: Entry, settingName: 'title' | 'description') {
-				const oldValue = entry[settingName];
-				const prompt = entry instanceof Portlet && settingName === 'title' ? 'Set header' : 'Set ' + settingName;
-				const singleLineValue = await vscode.window.showInputBox({
-					prompt,
-					// currently vscode only allows single-line input
-					value: oldValue.replace(/\r\n/g, '\\n'),
-					ignoreFocusOut: false,
-				});
-				// cancelled
-				if (singleLineValue === undefined) {
-					return;
-				}
-				// convert single-line input to multi-line
-				const newValue = singleLineValue.replace(/\\n/g, '\r\n');
-				const success = await entry.saveSetting(settingName, newValue);
-				if (success) {
-					vscode.window.showInformationMessage(`Set ${settingName}: ${singleLineValue}`);
-					if (settingName === 'title') {
-						setTitleStatus(entry);
-					}
+		async function setSetting(entry: Entry, settingName: 'title' | 'description') {
+			const oldValue = entry[settingName];
+			const prompt = entry instanceof Portlet && settingName === 'title' ? 'Set header' : 'Set ' + settingName;
+			const singleLineValue = await vscode.window.showInputBox({
+				prompt,
+				// currently vscode only allows single-line input
+				value: oldValue.replace(/\r\n/g, '\\n'),
+				ignoreFocusOut: false,
+			});
+			// cancelled
+			if (singleLineValue === undefined) {
+				return;
+			}
+			// convert single-line input to multi-line
+			const newValue = singleLineValue.replace(/\\n/g, '\r\n');
+			const success = await entry.saveSetting(settingName, newValue);
+			if (success) {
+				vscode.window.showInformationMessage(`Set ${settingName}: ${singleLineValue}`);
+				if (settingName === 'title') {
+					setTitleStatus(entry);
 				}
 			}
+		}
 
-			async function optionsMenu(uri: vscode.Uri): Promise<void> {
-				const entry = await ploneFS.stat(uri);
-				// map readable text to pick option
-				const optionsToAction: { [option: string]: OptionsMenuAction } = {};
-				// disable title/description for root until supported
-				const isRootFolder = entry instanceof Folder && entry.isRoot;
-				if (!isRootFolder) {
-					await entry.loadDetails();
-					optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
-					optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
+		async function optionsMenu(uri: vscode.Uri): Promise<void> {
+			const entry = await ploneFS.stat(uri);
+			// map readable text to pick option
+			const optionsToAction: { [option: string]: OptionsMenuAction } = {};
+			// disable title/description for root until supported
+			const isRootFolder = entry instanceof Folder && entry.isRoot;
+			if (!isRootFolder) {
+				await entry.loadDetails();
+				optionsToAction['Title: ' + entry.title] = { type: Options.title, entry };
+				optionsToAction['Description: ' + entry.description] = { type: Options.description, entry };
 
-					// root folder does not have state
-					if (isWithState(entry)) {
-						optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
-					}
+				// root folder does not have state
+				if (isWithState(entry)) {
+					optionsToAction['State: ' + StateText[entry.state]] = { type: Options.setState, entry };
 				}
-				if (entry instanceof Page) {
-					const canCheckInPromise = entry.canCheckIn();
-					const canCheckOutPromise = entry.canCheckOut();
-					if (await canCheckInPromise) {
-						optionsToAction['Check In'] = { type: Options.checkIn, entry };
-						optionsToAction['Cancel Check Out'] = { type: Options.cancelCheckOut, entry };
-					}
-					else if (await canCheckOutPromise) {
-						optionsToAction['Check Out'] = { type: Options.checkOut, entry };
-					}
-				}
-				if (isWithLocalCss(entry) && entry.hasLocalCss) {
-					optionsToAction['Open Local CSS'] = { type: Options.openLocalCSS, entry };
-				}
-				if (isWithPortlets(entry)) {
-					optionsToAction['Portlets'] = { type: Options.portlets, entry };
-				}
-				if (!isRootFolder) {
-					optionsToAction['Get UID'] = { type: Options.showUID, entry };
-				}
-				const option = await vscode.window.showQuickPick(Object.keys(optionsToAction), {
-					placeHolder: 'Plone Options',
-				});
-				// cancelled
-				if (option === undefined) {
-					return;
-				}
-				optionsReducer(optionsToAction[option]);
 			}
+			if (entry instanceof Page) {
+				const canCheckInPromise = entry.canCheckIn();
+				const canCheckOutPromise = entry.canCheckOut();
+				if (await canCheckInPromise) {
+					optionsToAction['Check In'] = { type: Options.checkIn, entry };
+					optionsToAction['Cancel Check Out'] = { type: Options.cancelCheckOut, entry };
+				}
+				else if (await canCheckOutPromise) {
+					optionsToAction['Check Out'] = { type: Options.checkOut, entry };
+				}
+			}
+			if (isWithLocalCss(entry) && entry.hasLocalCss) {
+				optionsToAction['Open Local CSS'] = { type: Options.openLocalCSS, entry };
+			}
+			if (isWithPortlets(entry)) {
+				optionsToAction['Portlets'] = { type: Options.portlets, entry };
+			}
+			if (!isRootFolder) {
+				optionsToAction['Get UID'] = { type: Options.showUID, entry };
+			}
+			const option = await vscode.window.showQuickPick(Object.keys(optionsToAction), {
+				placeHolder: 'Plone Options',
+			});
+			// cancelled
+			if (option === undefined) {
+				return;
+			}
+			optionsReducer(optionsToAction[option]);
+		}
 
-			async function optionsReducer(action: OptionsMenuAction) {
-				switch (action.type) {
-					case Options.title:
-						setSetting(action.entry, 'title');
-						break;
-					case Options.description:
-						setSetting(action.entry, 'description');
-						break;
-					case Options.checkOut:
-						let tryCheckOut: string | undefined = 'try again';
-						while (tryCheckOut) {
-							try {
-								const copy = await ploneFS.checkOut(action.entry);
-								vscode.window.showTextDocument(copy.uri);
-								break;
-							}
-							catch (error) {
-								tryCheckOut = await vscode.window.showErrorMessage('Unable to check out. It may already be checked out\n' + error.message, 'try again');
-							}
+		async function optionsReducer(action: OptionsMenuAction) {
+			switch (action.type) {
+				case Options.title:
+					setSetting(action.entry, 'title');
+					break;
+				case Options.description:
+					setSetting(action.entry, 'description');
+					break;
+				case Options.checkOut:
+					let tryCheckOut: string | undefined = 'try again';
+					while (tryCheckOut) {
+						try {
+							const copy = await ploneFS.checkOut(action.entry);
+							vscode.window.showTextDocument(copy.uri);
+							break;
 						}
-						break;
-					case Options.checkIn:
-						let tryCheckin: string | undefined = 'try again';
-						let message: string | undefined;
-						while (tryCheckin) {
-							message = await vscode.window.showInputBox({
-								prompt: 'Check-in Message',
-								value: message,
-								ignoreFocusOut: true,
-							});
-							if (message === undefined) {
-								tryCheckin = await vscode.window.showInformationMessage('Cancelled Check-in', 'try again');
-							}
-							else {
-								try {
-									await ploneFS.checkIn(action.entry, message);
-									tryCheckin = undefined;
-								}
-								catch (error) {
-									tryCheckin = await vscode.window.showErrorMessage('Unable to check in.\n' + error.message, 'try again');
-								}
-							}
+						catch (error) {
+							tryCheckOut = await vscode.window.showErrorMessage('Unable to check out. It may already be checked out\n' + error.message, 'try again');
 						}
-						break;
-					case Options.cancelCheckOut:
-						ploneFS.cancelCheckOut(action.entry);
-						break;
-					case Options.setState:
-						showChangeState(action.entry);
-						break;
-					case Options.openLocalCSS:
-						const uri = action.entry.uri;
-						if (action.entry instanceof Folder) {
-							vscode.window.showTextDocument(uri.with({ path: uri.path + '/local.css', query: 'localCss' }));
+					}
+					break;
+				case Options.checkIn:
+					let tryCheckin: string | undefined = 'try again';
+					let message: string | undefined;
+					while (tryCheckin) {
+						message = await vscode.window.showInputBox({
+							prompt: 'Check-in Message',
+							value: message,
+							ignoreFocusOut: true,
+						});
+						if (message === undefined) {
+							tryCheckin = await vscode.window.showInformationMessage('Cancelled Check-in', 'try again');
 						}
 						else {
-							vscode.window.showTextDocument(uri.with({ path: uri.path + '.local.css', query: 'localCss' }));
+							try {
+								await ploneFS.checkIn(action.entry, message);
+								tryCheckin = undefined;
+							}
+							catch (error) {
+								tryCheckin = await vscode.window.showErrorMessage('Unable to check in.\n' + error.message, 'try again');
+							}
 						}
-						break;
-					case Options.portlets:
-						showPortletSidePicker(action.entry);
-						break;
-					case Options.showUID:
-						showUID(action.entry);
-						break;
-					default:
-						const never: never = action;
-						throw new Error('unexpected Plone setting: ' + never);
-				}
-			}
-
-			context.subscriptions.push(vscode.commands.registerCommand(
-				'plonefs.optionsMenu',
-				(uri?: vscode.Uri) => {
-					if (uri) {
-						optionsMenu(uri);
 					}
-				},
-			));
+					break;
+				case Options.cancelCheckOut:
+					ploneFS.cancelCheckOut(action.entry);
+					break;
+				case Options.setState:
+					showChangeState(action.entry);
+					break;
+				case Options.openLocalCSS:
+					const uri = action.entry.uri;
+					const separator = action.entry instanceof Folder ? '/' : '.';
+					vscode.window.showTextDocument(uri.with({ path: `${uri.path}${separator}local.css`, query: 'localCss' }));
+					break;
+				case Options.portlets:
+					showPortletSidePicker(action.entry);
+					break;
+				case Options.showUID:
+					showUID(action.entry);
+					break;
+				default:
+					const never: never = action;
+					throw new Error('unexpected Plone setting: ' + never);
+			}
 		}
+
+		context.subscriptions.push(vscode.commands.registerCommand(
+			'plonefs.optionsMenu',
+			(uri?: vscode.Uri) => {
+				if (uri) {
+					optionsMenu(uri);
+				}
+			},
+		));
 	}
 
 	context.subscriptions.push(vscode.commands.registerCommand('plonefs.workspace', async () => {
 		let uri: vscode.Uri | undefined;
 		while (!uri) {
-			const newUriOption = '$(file-add) new';
-			const items = [...Object.keys(context.globalState.get<CookieJarStore>(cookieStoreName, {})).sort(), newUriOption];
+			const newUriOption = '$(new-folder) new';
+			let items = [
+				...Object.keys(context.globalState.get<CookieJarStore>(cookieStoreName, {})).sort(),
+				newUriOption,
+			];
+			const openNames = vscode.workspace.workspaceFolders?.map(folder => folder.name);
+			if (openNames) {
+				items = items.filter(item => !openNames.includes(item));
+			}
 			const pick = await vscode.window.showQuickPick(items, {
 				placeHolder: 'Open Plone site',
 				ignoreFocusOut: true,
@@ -565,20 +527,55 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			// remove protocol and/or a final slash
 			uriValue = uriValue.replace(/^https?:\/\/|\/+$/g, '');
+			if (openNames?.includes(uriValue)) {
+				vscode.window.showInformationMessage(`${uriValue} is already open`);
+				continue;
+			}
 			uri = vscode.Uri.parse('plone://' + uriValue);
-			if (uri) {
-				vscode.workspace.updateWorkspaceFolders(
-					0, 0, {
-					name: getSiteName(uri),
-					uri,
-				},
-				);
+		}
+		const cookieJarStore = context.globalState.get<CookieJarStore>(cookieStoreName, {});
+		const siteName = getSiteName(uri);
+		const serializedJar = cookieJarStore[siteName];
+		let cookieJar: CookieJar;
+		let loggedin = false;
+		if (serializedJar) {
+			try {
+				cookieJar = CookieJar.deserializeSync(cookieJarStore[siteName]);
+				const stream = await got.stream('https://' + uri.authority + uri.path + '/edit', {
+					followRedirect: false,
+					cookieJar,
+				});
+				const response = await getResponse(stream);
+				loggedin = response.statusCode === 200;
+			}
+			catch (e) {
+				cookieJar = new CookieJar();
 			}
 		}
+		else {
+			cookieJar = new CookieJar();
+		}
+		if (!loggedin) {
+			loggedin = await login(uri, cookieJar);
+			if (!loggedin) {
+				// cancelled
+				return;
+			}
+		}
+		context.globalState.update(cookieStoreName, { ...cookieJarStore, [siteName]: cookieJar.serializeSync() });
+		const start = vscode.workspace.workspaceFolders?.length || 0;
+		vscode.workspace.updateWorkspaceFolders(
+			start,
+			0,
+			{
+				name: siteName,
+				uri,
+			},
+		);
 	}));
 }
 
-async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<boolean> {
+async function login(uri: vscode.Uri, cookieJar: CookieJar): Promise<boolean> {
 	const siteName = getSiteName(uri);
 	let username: string | undefined = '',
 		password: string | undefined = '';
@@ -609,10 +606,41 @@ async function login(client: got.MyGotInstance<null>, uri: vscode.Uri): Promise<
 			__ac_password: password,
 			'form.submitted': 1,
 		};
-		// force https because of TLS 1.0 workaround
-		const stream = client.stream.post('https://' + uri.authority + uri.path + '/login_form', { form: true, body, throwHttpErrors: false });
-		const response = await getResponse(stream);
-		return response.statusCode === 302;
+
+		const stream = got.stream.post('https://' + uri.authority + uri.path + '/login_form', { form: true, body, throwHttpErrors: false, cookieJar });
+		let response: IncomingMessage | undefined = undefined;
+		try {
+			response = await getResponse(stream);
+		}
+		catch (e) {
+			// ssl error
+			// allow manually supplying cookie
+			if (e.code === "EPROTO") {
+				let cookieValue = await vscode.window.showInputBox({
+					prompt: 'Cookie for ' + siteName,
+					ignoreFocusOut: true,
+				});
+				// cancelled
+				if (cookieValue === undefined) {
+					return false;
+				}
+				// remove wrapping quotes
+				else if (cookieValue[0] === '"') {
+					cookieValue = cookieValue.slice(1, -1);
+				}
+				const cookie = new Cookie({
+					key: '__ac',
+					value: cookieValue,
+					domain: uri.authority,
+					path: '/',
+				});
+				cookieJar.setCookieSync(cookie, uri.authority + uri.path!);
+			}
+		}
+		if(response?.statusCode === 302) {
+			return true;
+		}
+		vscode.window.showInformationMessage('Login failed');
 	}
 }
 
@@ -625,4 +653,32 @@ function getResponse(stream: got.GotEmitter) {
 		stream.on('response', response => resolve(response));
 		stream.on('error', error => reject(error));
 	});
+}
+
+// to VS Code Plone Documents and Plone Files are both TextDocuments
+// so set Plone Documents to be HTML and Files to be whatever we determined them to be
+// (unless VS Code already figured it out)
+async function textDocumentOpened(doc: vscode.TextDocument) {
+	if (doc.uri.scheme === 'plone') {
+		const entry: Entry = await ploneFS.stat(doc.uri);
+		if (doc.languageId === 'plaintext') {
+			if (entry instanceof Document || entry instanceof Portlet) {
+				vscode.languages.setTextDocumentLanguage(doc, 'html');
+			}
+			else if (entry instanceof LocalCss) {
+				vscode.languages.setTextDocumentLanguage(doc, 'css');
+			}
+			else if (entry instanceof File && entry.language && entry.language !== 'plaintext') {
+				vscode.languages.setTextDocumentLanguage(doc, entry.language);
+			}
+		}
+	}
+}
+
+function removeWorkspaceFolder(uri: vscode.Uri) {
+	// login canceled, remove folder
+	const index = vscode.workspace.workspaceFolders?.findIndex(f => f.uri === uri);
+	if (index) {
+		vscode.workspace.updateWorkspaceFolders(index, 1);
+	}
 }

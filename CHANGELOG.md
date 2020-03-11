@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.5.0
+
+- Extension no longer reloads when new workspace folder added
+- Workspace folder removed if login cancelled
+
 ## 0.4.8
 
 - Version bump to republish

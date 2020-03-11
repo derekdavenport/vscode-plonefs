@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- * Copyright (c) 2018 Derek Davenport.
+ * Copyright (c) 2018, 2019, 2020 Derek Davenport.
  * this file is based on
  * https://github.com/Microsoft/vscode-extension-samples/blob/master/fsprovider-sample/src/fileSystemProvider.ts
  * Copyright (c) Microsoft Corporation.
@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { copyMatch } from './library/util';
 
-import { Folder, BaseFile, Page, File, Entry, isWithLocalCss, PortletUrls, isWithPortlets, BaseFolder, Document } from './library/plone';
+import { Folder, BaseFile, Page, File, Entry, isWithLocalCss, PortletUrls, isWithPortlets, BaseFolder } from './library/plone';
 import { Roots } from './extension';
 
 export type Credentials = {
@@ -22,8 +22,16 @@ export type Credentials = {
 export default class PloneFS implements vscode.FileSystemProvider {
 	private readonly roots: Roots;
 
-	constructor(roots: Roots) {
-		this.roots = roots;
+	constructor() {
+		this.roots = {};
+	}
+
+	public addRoot(siteName: string, folder: Folder) {
+		this.roots[siteName] = folder;
+	}
+
+	public removeRoot(siteName: string) {
+		delete this.roots[siteName];
 	}
 
 	private getRootFolderFor(uri: vscode.Uri): Folder {
@@ -59,8 +67,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	// --- manage file contents
 
 	async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-		const file = await this._lookupAsFile(uri, false);
+		let file: BaseFile | undefined;
 		try {
+			file = await this._lookupAsFile(uri, false);
 			await file.load();
 		}
 		catch (error) {
@@ -71,7 +80,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 				throw error;
 			}
 		}
-		if (!file.loaded) {
+		if (!file?.loaded) {
 			throw vscode.FileSystemError.Unavailable('unable to load file');
 			// todo: try again?
 		}
@@ -332,7 +341,7 @@ export default class PloneFS implements vscode.FileSystemProvider {
 		return entry;
 	}
 
-	private async _lookupAsFile(uri: vscode.Uri, silent: false): Promise<BaseFile | Document>;
+	private async _lookupAsFile(uri: vscode.Uri, silent: false): Promise<BaseFile>;
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined>;
 	private async _lookupAsFile(uri: vscode.Uri, silent: boolean): Promise<BaseFile | undefined> {
 		const entry = await this._lookup(uri, silent);
