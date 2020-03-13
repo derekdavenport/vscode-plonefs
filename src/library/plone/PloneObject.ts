@@ -14,13 +14,12 @@ export interface PloneObjectOptions {
 
 export default abstract class PloneObject implements vscode.FileStat {
 	static readonly type_name: string | undefined;
-
 	static readonly EMPTY_BUFFER = Buffer.from('');
 	static readonly LINEFEED_BUFFER = Buffer.from('\n');
 	static readonly TRUE_BUFFER = Buffer.from('True');
 	static readonly SAVED_BUFFER = Buffer.from('saved');
 
-	type: vscode.FileType;
+	readonly type: vscode.FileType;
 	ctime: number;
 	mtime: number;
 	size: number;

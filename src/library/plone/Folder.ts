@@ -7,9 +7,9 @@ interface FolderOptions extends PloneObjectOptions {
 
 type Listing = {
 	parent_url: string;
-	path: Item[];
+	path: readonly Item[];
 	upload_allowed: boolean;
-	items: Item[];
+	items: readonly Item[];
 };
 
 type Item = {
@@ -55,7 +55,6 @@ export default class Folder extends BaseFolder implements WithState, WithLocalCs
 		if (this.hasLocalCss) {
 			this.localCss = new LocalCss({ ...options, forRoot: isRoot });
 		}
-		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Entry>();
 		this.portletManagers = {
 			top: new PortletManager({ client: this.client, parentUri: this.uri, side: 'top' }),

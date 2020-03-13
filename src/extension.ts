@@ -175,6 +175,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		addFolders(ploneWorkspaceFolders);
 		context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(e => {
 			addFolders(e.added);
+			e.removed.forEach(folder => folder.uri.scheme === 'plone' && ploneFS.removeRoot(getSiteName(folder.uri)));
 		}));
 
 		const stateStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);

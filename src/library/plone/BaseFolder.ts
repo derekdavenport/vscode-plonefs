@@ -1,6 +1,8 @@
+import { FileType } from 'vscode';
 import { PloneObject, PloneObjectOptions, Entry } from ".";
 
 export default abstract class BaseFolder extends PloneObject {
+	type = FileType.Directory;
 	abstract entries: Map<string, Entry>;
 	loadingEntries: boolean;
 	loadingEntriesPromise: Promise<void>;

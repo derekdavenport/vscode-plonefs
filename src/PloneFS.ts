@@ -31,7 +31,9 @@ export default class PloneFS implements vscode.FileSystemProvider {
 	}
 
 	public removeRoot(siteName: string) {
-		delete this.roots[siteName];
+		if (siteName in this.roots) {
+			delete this.roots[siteName];
+		}
 	}
 
 	private getRootFolderFor(uri: vscode.Uri): Folder {

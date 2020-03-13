@@ -21,7 +21,6 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 		super({ ...options, uri, exists: true });
 		this.side = side;
 
-		this.type = vscode.FileType.Directory;
 		this.entries = new Map<string, Portlet>();
 		// nothing to load
 		this.loaded = true;
@@ -70,7 +69,7 @@ export default class PortletManager<S extends PortletSideType = PortletSideType>
 		const root = parse(response.body) as HTMLElement;
 		const headerLinks = root.querySelectorAll(`#portletmanager-${PortletManagerSides[this.side]} .portletHeader div a`)
 			// current version of parser cannot select tag and class
-			.filter(link => link.classNames.length === 0) as HTMLElement[];
+			.filter(link => link.classNames.length === 0) as readonly HTMLElement[];
 		for (const headerLink of headerLinks) {
 			const href = headerLink.attributes['href'];
 			const editUrl = url.parse(href);
