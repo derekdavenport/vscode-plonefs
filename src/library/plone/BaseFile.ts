@@ -7,12 +7,12 @@ import { PloneObject, PloneObjectOptions } from ".";
  * A Plone Object with data
  */
 export default abstract class BaseFile extends PloneObject {
+	type = vscode.FileType.File;
 	data: Uint8Array;
 	static readonly fieldname: string;
 
 	constructor(options: PloneObjectOptions) {
 		super(options);
-		this.type = vscode.FileType.File;
 		this.data = BaseFile.EMPTY_BUFFER;
 	}
 
